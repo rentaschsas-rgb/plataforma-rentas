@@ -150,12 +150,31 @@ Además, **si quien lo corre es admin**, ese mismo flujo **pisa el honorario** c
 
 Nota: la columna **RESPONSABLE** de `elaborar` es un `TRUE`/`FALSE` (marca de contacto del grupo), **no** un nombre; por eso `responsable` **no** se hereda del Sheet ni en la importación ni en la migración: arranca vacío y se asigna en la plataforma.
 
-**Pedir los documentos que faltan, por correo.** El bloque *Documentos* del expediente trae un botón **«Pedir por correo lo que falta»** que redacta el mensaje —saludo, la lista de lo pendiente, la fecha de vencimiento y el aviso de que presentar fuera de plazo genera **sanción por extemporaneidad e intereses de mora**— y abre el correo del usuario con todo listo (`mailto:`, el mismo camino de la invitación al cotizador: **no hay servidor de correo**, sale del buzón de quien lo manda y le queda en enviados). Detalles que importan:
+**Recordatorio de documentos: se envía solo.** El bloque *Documentos* del expediente trae el botón **«Enviar recordatorio»**. El correo lo manda el **Apps Script del Sheet** (`recordatorioDocumentos` en `apps_script.js`), no el navegador: la consola es un HTML estático y no puede enviar correo. Sale con el mismo vestido y desde la misma cuenta que la invitación del cotizador, con **copia a `rentas.chsas`**. Lleva, en este orden: los **días que faltan** (o los que lleva vencido, en rojo), la lista de lo pendiente, y el **cargo por entrega tardía**.
 
 - La lista nombra la **categoría**, y si dentro de ella ya llegó algo, aclara entre paréntesis qué falta (`Certificados bancarios (Bancolombia)`): pedir la categoría entera hacía que el cliente reenviara lo que ya había mandado.
+- El **nombre va completo**. En la hoja está como «APELLIDO1 APELLIDO2 NOMBRE», así que saludar por la primera palabra saluda por el apellido (`nombreLargo`, no `primerNombre`).
 - Se le escribe a **todos** los correos de la celda del Sheet. Sin correo, el botón queda deshabilitado y lo dice.
-- Al enviar, deja **constancia en el expediente**: un comentario en el paso *Documentos* con `tipo:'solicitud'`, y marca la tarea *Solicitar documentos faltantes*. De ese comentario sale el «Última solicitud enviada el …» que se ve en la barra — por eso **no hizo falta un campo nuevo** en el cliente.
-- Windows corta el `mailto:` pasados unos 2.000 caracteres. Si el mensaje llega ahí (16 categorías faltantes ≈ 2.360), se abre el correo solo con el asunto y el texto queda en el **portapapeles**, avisándolo. El botón **«Copiar el texto»** hace lo mismo a propósito, para mandarlo por WhatsApp.
+- Deja **constancia en el expediente**: un comentario en el paso *Documentos* con `tipo:'solicitud'`, y marca la tarea *Solicitar documentos faltantes*. De ese comentario sale el «Última solicitud enviada el …» de la barra — por eso **no hizo falta un campo nuevo** para eso.
+- **«Copiar el texto»** deja la misma carta en texto plano, para WhatsApp.
+
+**Por qué el endpoint público no es un buzón abierto.** El `doPost` del Apps Script atiende a cualquiera que conozca la URL, así que:
+
+1. **El destinatario no viaja en la petición**: se busca por cédula en `elaborar`. El endpoint no sirve para escribirle a nadie que no sea ya cliente.
+2. **El texto tampoco viaja**: se arma en el servidor. De afuera solo entra *cuáles* documentos faltan, validados contra el catálogo `CATEGORIAS_DOC` (que debe seguir a `ORDEN_CAT` de `index.html`).
+3. **Copia a la oficina en cada envío y tope diario** (`TOPE_RECORDATORIOS_DIA`, 60 — Gmail gratis da 100 destinatarios/día). Un abuso se ve el mismo día y se corta solo.
+
+El `token` compartido es un cerrojo de cortesía: la consola es HTML público y quien la lea puede sacarlo. Lo que protege de verdad son los tres puntos de arriba.
+
+### El cargo por entrega tardía — `$70.000`
+
+**No es la sanción de la DIAN**, es la cláusula de gestión extemporánea del contrato que el cliente aceptó en el cotizador: «*aplicar un cargo adicional por gestión extemporánea de SETENTA MIL PESOS ($70.000 COP) por cada proceso afectado*», junto con el compromiso de entregar los papeles **una semana antes** del vencimiento. Los dos números viven en `MULTA_DOCS` y `DIAS_ENTREGA`, en `index.html` y en `apps_script.js`; en el cotizador está el mismo `MULTA_DOCS`, **informativo** — no entra en el precio cotizado, y por eso la plataforma lo suma aparte.
+
+- Se aplica **en el mismo acto en que se le avisa**, nunca antes: el correo que sale le dice al cliente que se le está cobrando. Cobrar en silencio sería peor que no cobrar.
+- La condición es *pasó la fecha de entrega* **y** *siguen faltando papeles*. La decide el **servidor** (tiene la fecha del Sheet, que es la buena) y la devuelve en `recargo`; la plataforma la obedece.
+- Se cobra **una sola vez**, aunque se le insista después.
+- Vive en `recargoDocs` (monto) y `recargoDocsFecha`. Un **admin** puede quitarlo con el ↺ del bloque *Cobro*, y queda anotado: perdonar $70.000 es una decisión de la que alguien va a preguntar.
+- **`honorariosDe` sigue siendo solo el precio**; lo que se debe es **`cobroDe` = honorarios + cargo**, y es lo que usan el saldo, la cartera, la vista de pagos y el recibo. Separarlos evita que editar los honorarios a mano se coma el cargo, o que el cargo se duplique al reimportar.
 
 #### `/clientes/{cedula}/hitos/{n}`
 

@@ -997,6 +997,31 @@ const enTemporada = c => !c.noObligado && (c.paso >= 2 || /acept/i.test(c.sheet.
 // cliente regalado— que gana y no se pisa al reimportar ni desde RESPUESTAS.
 const honorariosDe = c => (c.honorarioManual!=null) ? c.honorarioManual : (c.sheet.honorarios||0);
 
+/* ── Cargo por entrega tardía de documentos ───────────────────
+   No es la sanción de la DIAN: es la cláusula de gestión extemporánea
+   del contrato que el cliente aceptó en el cotizador —«un cargo
+   adicional de SETENTA MIL PESOS ($70.000 COP) por cada proceso
+   afectado»— junto con el compromiso de entregar los papeles UNA
+   SEMANA ANTES del vencimiento. No está incluido en el precio
+   cotizado, así que la plataforma lo suma aparte.
+
+   Se aplica solo cuando se le manda el recordatorio y la fecha de
+   entrega ya pasó: cobrarlo sin habérselo dicho sería peor. Queda en
+   `recargoDocs` (monto) y `recargoDocsFecha`, y un admin puede
+   quitarlo desde el expediente. */
+const MULTA_DOCS   = 70000;
+const DIAS_ENTREGA = 7;
+const recargoDe = c => c.recargoDocs || 0;
+// Lo que se le cobra en total: honorarios + cargo. Es la base de saldos,
+// de la cartera y del recibo — `honorariosDe` sigue siendo solo el precio.
+const cobroDe = c => honorariosDe(c) + recargoDe(c);
+// Fecha límite de entrega: una semana antes del vencimiento.
+function limiteEntregaDe(c){
+  const f = aDate(venceDe(c)); if(!f) return '';
+  const l = new Date(f.getFullYear(), f.getMonth(), f.getDate()-DIAS_ENTREGA);
+  return `${l.getFullYear()}-${String(l.getMonth()+1).padStart(2,'0')}-${String(l.getDate()).padStart(2,'0')}`;
+}
+
 // Cuando el expediente todavía no se ha traído de la nube usamos el resumen
 // desnormalizado que viaja en el propio documento del cliente (ARQUITECTURA §2).
 function conteoDocs(c){
@@ -1025,7 +1050,7 @@ function resumen(c){
     // dejan de contar como faltantes en los tableros.
     falta: noOb ? 0 : cd.falta,
     pagado: pag,
-    saldo: Math.max(0,honorariosDe(c)-pag),
+    saldo: Math.max(0,cobroDe(c)-pag),
     presentado: c.paso>=5,
     // Sin obligación no hay plazo que vencer: no puede salir en rojo ni sumar
     // a «ya vencidas» ni a «vencen en 7 días».
@@ -1295,7 +1320,7 @@ function pintar(){
   const rs = new Map(CLIENTES.map(c=>[c.cedula, resumen(c)]));
   $('#cnVencer').textContent   = CLIENTES.filter(c=>enTemporada(c) && rs.get(c.cedula).riesgo).length;
   $('#cnClientes').textContent = CLIENTES.length;
-  $('#cnPagos').textContent    = CLIENTES.filter(c=>rs.get(c.cedula).saldo>0 && honorariosDe(c)>0).length;
+  $('#cnPagos').textContent    = CLIENTES.filter(c=>rs.get(c.cedula).saldo>0 && cobroDe(c)>0).length;
   $('#cnBancos').textContent   = MOVS.length;
 
   const f = {vencer:pintarVencer, clientes:pintarClientes, cotizador:pintarCotizador, pagos:pintarPagos, bancos:pintarBancos}[vistaActual];
@@ -1600,9 +1625,9 @@ function pintarCotizador(){
 }
 
 function pintarPagos(rs){
-  const fact = CLIENTES.reduce((s,c)=>s+honorariosDe(c),0);
+  const fact = CLIENTES.reduce((s,c)=>s+cobroDe(c),0);
   const rec  = MOVS.reduce((s,m)=>s+m.monto,0);
-  const deudores = CLIENTES.filter(c=>rs.get(c.cedula).saldo>0 && honorariosDe(c)>0);
+  const deudores = CLIENTES.filter(c=>rs.get(c.cedula).saldo>0 && cobroDe(c)>0);
   $('#kFact').textContent   = pesos(fact);
   $('#kRec').textContent    = pesos(rec);
   $('#kRecPct').textContent = fact ? Math.round(rec/fact*100)+'% de lo facturado' : '—';
@@ -1614,13 +1639,18 @@ function pintarPagos(rs){
     {clave:'cliente',et:'Cliente',pista:'nombre o cédula',valor:d=>d.c.sheet.nombre+' '+d.c.cedula,ordenValor:d=>d.c.sheet.nombre,pinta:d=>celCliente(d.c)},
     {clave:'paso',   et:'Paso',tipo:'opciones',opciones:PASOS.concat('No obligado'),
       valor:d=>d.c.noObligado?'No obligado':PASOS[d.c.paso-1],ordenValor:d=>d.c.paso,pinta:d=>celPaso(d.c)},
-    {clave:'hon',    et:'Honorarios',num:true,pista:'monto',valor:d=>honorariosDe(d.c)||'',ordenValor:d=>honorariosDe(d.c),pinta:d=>`<span class="dato">${pesos(honorariosDe(d.c))}</span>`},
+    // Muestra el TOTAL a cobrar, para que la fila cuadre con Abonado y Saldo.
+    // Si trae cargo por entrega tardía, se dice debajo: un número más alto
+    // que el cotizado, sin explicación, es una llamada del cliente.
+    {clave:'hon',    et:'Honorarios',num:true,pista:'monto',valor:d=>cobroDe(d.c)||'',ordenValor:d=>cobroDe(d.c),
+      pinta:d=>`<span class="dato">${pesos(cobroDe(d.c))}</span>`
+        + (recargoDe(d.c)?`<div class="sub">incluye ${pesos(recargoDe(d.c))} por entrega tardía</div>`:'')},
     {clave:'abon',   et:'Abonado',num:true,pista:'monto',valor:d=>d.r.pagado||'',ordenValor:d=>d.r.pagado,pinta:d=>`<span class="dato ${d.r.pagado?'dato--ok':''}">${d.r.pagado?pesos(d.r.pagado):'—'}</span>`},
     {clave:'saldo',  et:'Saldo',num:true,pista:'monto',valor:d=>d.r.saldo||'',ordenValor:d=>d.r.saldo,pinta:d=>`<span class="dato ${d.r.saldo?'dato--riesgo':'dato--ok'}">${d.r.saldo?pesos(d.r.saldo):'al día'}</span>`},
     {clave:'sit',    et:'Situación',tipo:'opciones',opciones:['pagado','debe','abono parcial','sin facturar'],
-      valor:d=>!honorariosDe(d.c)?'sin facturar':d.r.saldo===0?'pagado':d.r.pagado>0?'abono parcial':'debe',
+      valor:d=>!cobroDe(d.c)?'sin facturar':d.r.saldo===0?'pagado':d.r.pagado>0?'abono parcial':'debe',
       ordenValor:d=>d.r.saldo,
-      pinta:d=>{const v=!honorariosDe(d.c)?['','sin facturar']:d.r.saldo===0?['ok','pagado']:d.r.pagado>0?['alerta','abono parcial']:['riesgo','debe'];
+      pinta:d=>{const v=!cobroDe(d.c)?['','sin facturar']:d.r.saldo===0?['ok','pagado']:d.r.pagado>0?['alerta','abono parcial']:['riesgo','debe'];
         return `<span class="pastilla ${v[0]?'pastilla--'+v[0]:''}">${v[1]}</span>`;}}
   ], datos, {orden:{clave:'saldo',dir:'desc'}, id:d=>d.c.cedula, alClic:irACliente, repintar:pintar});
   $('#ctPagos').textContent = `${n} de ${CLIENTES.length} clientes`;
@@ -1683,10 +1713,20 @@ document.addEventListener('click', e=>{
 
 /* ══════════════════════════════════════════════════════════════
    RECORDATORIO DE DOCUMENTOS — el correo de «esto es lo que falta»
-   Es el mismo camino del cotizador: la plataforma redacta y abre TU
-   correo con el mensaje listo. No hay servidor de correo detrás, así
-   que sale desde tu buzón, con tu firma y tu historial de enviados.
+
+   Lo envía el Apps Script del Sheet (`recordatorioDocumentos` en
+   apps_script.js), no el navegador: la consola es un HTML estático y no
+   puede mandar correo. Sale con el mismo vestido y desde la misma cuenta
+   que la invitación del cotizador, con copia a rentas.chsas.
+
+   Aquí solo viajan la cédula y la lista de lo que falta. El nombre, el
+   correo del cliente y el texto los pone el servidor leyendo la hoja
+   `elaborar` — así este endpoint público no sirve para escribirle a
+   nadie de afuera. Ver el encabezado de esa función en apps_script.js.
    ══════════════════════════════════════════════════════════════ */
+
+const URL_BACKEND = 'https://script.google.com/macros/s/AKfycbwxjnJdw3tNn69k0bFtCqMRT_RasXQBbkgOOq72JuQbcGFYII149SbOlL0aCqWza3GNUA/exec';
+const TOKEN_BACKEND = 'rnt-2026-9f3a7c1e5b48';   // debe coincidir con TOKEN_PLATAFORMA en apps_script.js
 
 const PASO_DOCS = PASOS.indexOf('Documentos') + 1;
 const TAREA_SOLICITAR = 'Solicitar documentos faltantes (si aplica)';
@@ -1711,28 +1751,64 @@ function faltantesDe(c){
 // expediente, que ya se guardan. No hace falta un campo nuevo del cliente.
 const ultimaSolicitud = c => c.notas.filter(n=>n.tipo==='solicitud').map(n=>n.creado).sort().slice(-1)[0] || '';
 
+// Días que faltan para el vencimiento, y para la fecha de entrega pactada.
+const diasVence   = c => diasA(venceDe(c));
+const diasEntrega = c => diasA(limiteEntregaDe(c));
+// ¿Ya se ganó el cargo? Pasó la fecha de entrega y los papeles no están.
+const aplicaRecargo = c => diasEntrega(c) < 0 && catsFaltantes(c).length > 0;
+
+/* La versión en texto plano, para mandarla por WhatsApp con «Copiar».
+   El correo de verdad lo arma el servidor en HTML; este dice lo mismo.
+   El nombre va COMPLETO: en la hoja está como «APELLIDO1 APELLIDO2
+   NOMBRE», así que saludar por la primera palabra saluda por el apellido
+   (por eso el Apps Script usa nombreLargo desde hace rato). */
 function correoFaltantes(c){
-  const vence = venceDe(c);
+  const vence = venceDe(c), limite = limiteEntregaDe(c);
+  const d = diasVence(c);
   const faltan = faltantesDe(c);
+  const reloj = d < 0 ? `Su plazo venció hace ${Math.abs(d)} día${Math.abs(d)===1?'':'s'}.`
+              : d === 0 ? 'Su plazo vence HOY.'
+              : `Faltan ${d} día${d===1?'':'s'} para su vencimiento.`;
   const L = [];
-  L.push(`Estimado(a) ${primerNombre(c.sheet.nombre) || 'cliente'}:`);
+  L.push(`Estimado(a) ${String(c.sheet.nombre||'').replace(/\s+/g,' ').trim() || 'cliente'}:`);
   L.push('');
-  L.push(`Le escribimos de Cano Herrera Asesorías SAS porque, a la fecha, NO hemos recibido los siguientes documentos, necesarios para elaborar su Declaración de Renta del año gravable ${PERIODO}:`);
+  L.push(`${reloj} Su declaración de renta del año gravable ${PERIODO} vence el ${fLarga(vence)}.`);
+  L.push('');
+  L.push('A la fecha NO hemos recibido los siguientes documentos, que necesitamos para elaborarla y presentarla:');
   L.push('');
   faltan.forEach(f => L.push(`  • ${f}`));
   L.push('');
-  L.push(`Su declaración vence el ${fLarga(vence)}, fecha que la DIAN le asigna según los dos últimos dígitos de su cédula.`);
-  L.push('Sin estos documentos no podemos elaborarla ni presentarla dentro del plazo, y presentarla fuera de tiempo genera SANCIÓN por extemporaneidad e intereses de mora a cargo del contribuyente.');
+  if(aplicaRecargo(c)){
+    L.push(`En el contrato que usted aceptó se acordó entregar los documentos una semana antes del vencimiento, es decir a más tardar el ${fLarga(limite)}. Como a la fecha no los hemos recibido, se aplica el cargo adicional por gestión extemporánea de ${pesos(MULTA_DOCS)} por proceso, que se suma a sus honorarios.`);
+  }else{
+    L.push(`Recuerde que en el contrato que usted aceptó se acordó entregar los documentos una semana antes del vencimiento, es decir a más tardar el ${fLarga(limite)}. Pasada esa fecha se aplica un cargo adicional por gestión extemporánea de ${pesos(MULTA_DOCS)} por proceso. Todavía está a tiempo de evitarlo.`);
+  }
   L.push('');
-  L.push('Le agradecemos enviárnoslos lo más pronto posible, respondiendo a este mismo correo, para alcanzar a presentar su declaración a tiempo.');
+  L.push('Le agradecemos enviárnoslos lo más pronto posible, respondiendo a este mismo correo.');
   L.push('');
-  L.push('Quedamos atentos a cualquier inquietud.');
-  L.push('');
-  L.push('Equipo Cano Herrera Asesorías SAS');
+  L.push('Saludos cordiales,');
+  L.push('Cano Herrera Asesorías SAS · rentas.chsas@gmail.com');
   return {
-    asunto: `Documentos pendientes para su Declaración de Renta ${PERIODO} — vence el ${fLarga(vence)}`,
+    asunto: `Documentos pendientes para su Declaración de Renta — vence el ${fLarga(vence)}`,
     cuerpo: L.join('\n')
   };
+}
+
+/* Pide al Apps Script que envíe el correo. Devuelve lo que contestó el
+   servidor, o `null` si el navegador no pudo leer la respuesta —que pasa,
+   porque Apps Script contesta tras un redirect a otro dominio. Que no se
+   pueda LEER no significa que no se haya enviado: por eso quien llama
+   distingue «falló» de «no sé», y el correo lleva copia a la oficina, que
+   es la confirmación que de verdad sirve. */
+async function pedirEnvioRecordatorio(c){
+  const cuerpo = JSON.stringify({
+    accion:'recordatorio', token:TOKEN_BACKEND,
+    cedula:c.cedula, vence:venceDe(c), faltantes:faltantesDe(c)
+  });
+  const resp = await fetch(URL_BACKEND, {
+    method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:cuerpo
+  });
+  try{ return await resp.json(); }catch(_){ return null; }
 }
 
 /* La barra que aparece arriba de las categorías cuando falta algo. */
@@ -1746,12 +1822,20 @@ function bloquePedir(c){
   if(!faltan.length) return ult
     ? `<div class="pedir"><span class="pedir__x" style="margin:0;text-align:left;max-width:none">Papeles completos. La última solicitud se envió el ${fLarga(ult)}.</span></div>`
     : '';
+  /* Lo que la nota tiene que responder de un vistazo: ¿a quién le llega,
+     cuándo fue la última vez, y qué le va a costar al cliente? */
+  const dl = diasEntrega(c);
+  const cobra = aplicaRecargo(c) && !recargoDe(c);
   const nota = !correos.length
     ? 'Este cliente no tiene correo en el Sheet: no hay a dónde escribirle.'
-    : ult ? `Última solicitud enviada el ${fLarga(ult)}.`
-          : 'Se abre tu correo con el mensaje listo: lo que falta, la fecha de vencimiento y el aviso de sanción.';
+    : [
+        ult ? `Última solicitud enviada el ${fLarga(ult)}.` : '',
+        cobra ? `Se pasó la fecha de entrega (${fLarga(limiteEntregaDe(c))}): al enviarlo se le suman ${pesos(MULTA_DOCS)} por entrega tardía.`
+        : recargoDe(c) ? `Ya tiene aplicado el cargo de ${pesos(recargoDe(c))} por entrega tardía.`
+        : dl >= 0 ? `Le quedan ${dl} día${dl===1?'':'s'} para entregar sin el cargo de ${pesos(MULTA_DOCS)}.` : ''
+      ].filter(Boolean).join(' ');
   return `<div class="pedir pedir--alerta">
-    <button class="btn btn--fuerte btn--chico" data-pedirdocs${correos.length?'':' disabled'}>✉ Pedir por correo lo que falta (${faltan.length})</button>
+    <button class="btn btn--fuerte btn--chico" data-pedirdocs${correos.length?'':' disabled'}>✉ Enviar recordatorio (${faltan.length} pendientes)</button>
     <button class="btn btn--chico" data-copiarpedido>⧉ Copiar el texto</button>
     <span class="pedir__x">${esc(nota)}</span>
   </div>`;
@@ -1918,6 +2002,11 @@ function pintarCliente(c){
             : (hon ? pesos(hon) : `<span style="color:var(--tx-3)">sin acordar</span>`)}${c.honorarioManual===0?' <span class="sub" style="display:inline">regalado</span>':''}</dd></div>
           ${!hon && c.sheet.cotizado
             ? `<div class="par"><dt>Cotizado</dt><dd style="color:var(--tx-3)">${pesos(c.sheet.cotizado)}</dd></div>` : ''}
+          ${recargoDe(c) ? `<div class="par">
+            <dt>Entrega tardía<br><span class="sub" style="display:block;max-width:22ch">Cargo del contrato${c.recargoDocsFecha?`, aplicado el ${fLarga(c.recargoDocsFecha)}`:''}</span></dt>
+            <dd><span style="color:var(--alerta)">+ ${pesos(recargoDe(c))}</span>${esAdmin
+              ? ` <button class="pastilla" data-quitarrecargo title="Quitar el cargo por entrega tardía">↺</button>` : ''}</dd></div>
+          <div class="par"><dt>Total a cobrar</dt><dd>${pesos(cobroDe(c))}</dd></div>` : ''}
           <div class="par"><dt>Abonado</dt><dd>${pesos(r.pagado)}</dd></div>
           <div class="par"><dt>Saldo</dt><dd style="color:${r.saldo?'var(--riesgo)':'var(--ok)'}">${r.saldo?pesos(r.saldo):'al día'}</dd></div>
         </dl>
@@ -2012,38 +2101,56 @@ function cablearCliente(c){
      redactado y deja constancia en el expediente: quién lo pidió y cuándo
      es exactamente lo que se pregunta tres semanas después. También marca
      la tarea «Solicitar documentos faltantes» del paso Documentos. */
-  const registrarSolicitud = (faltan, medio)=>{
+  const registrarSolicitud = (faltan, medio, cobrar)=>{
     c.tareas = c.tareas || {};
     c.tareas[TAREA_SOLICITAR] = true;
     c.notas.unshift({id:idNuevo('n'),
       texto:`Solicitud de documentos faltantes (${medio}): ${faltan.join(', ')}.`,
       paso:PASO_DOCS, origen:'equipo', autor:autorActual(), creado:hoyISO(), tipo:'solicitud'});
+    /* El cargo se aplica en el mismo acto en que se le avisa, nunca antes:
+       el correo que acaba de salir le dice al cliente que se le está
+       cobrando. Se aplica una sola vez, aunque se le insista después. */
+    if(cobrar && !recargoDe(c)){
+      c.recargoDocs = MULTA_DOCS;
+      c.recargoDocsFecha = hoyISO();
+      c.notas.unshift({id:idNuevo('n'),
+        texto:`Se aplicó el cargo por entrega tardía de ${pesos(MULTA_DOCS)}: la fecha de entrega era el ${fLarga(limiteEntregaDe(c))} y los documentos no habían llegado. Se le informó en el correo.`,
+        paso:PASO_DOCS, origen:'equipo', autor:autorActual(), creado:hoyISO(), tipo:'recargo'});
+    }
     guardar(); pintarCliente(c);
   };
   const btnPedir = $('[data-pedirdocs]',raiz);
-  if(btnPedir) btnPedir.onclick = ()=>{
+  if(btnPedir) btnPedir.onclick = async ()=>{
     const correos = correosDe(c);
     if(!correos.length){ brindis('Ese cliente no tiene correo registrado en el Sheet.'); return; }
     const faltan = faltantesDe(c);
     if(!faltan.length){ brindis('No falta ningún documento.'); return; }
-    const {asunto, cuerpo} = correoFaltantes(c);
-    // La coma separa destinatarios y la arroba es parte de la dirección: ninguna
-    // de las dos se codifica, o hay clientes de correo que no reconocen a quién
-    // se le escribe.
-    const para = correos.map(x=>encodeURIComponent(x).replace(/%40/g,'@')).join(',');
-    const url = `mailto:${para}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
-    /* Windows corta el mailto pasados unos 2.000 caracteres, y con muchas
-       categorías faltantes el mensaje llega ahí. Antes que mandar un correo
-       mocho, se abre solo con el asunto y el texto queda en el portapapeles. */
-    if(url.length > 1900){
-      navigator.clipboard.writeText(cuerpo).catch(()=>{});
-      location.href = `mailto:${para}?subject=${encodeURIComponent(asunto)}`;
-      brindis('La lista es larga: te copié el mensaje al portapapeles. Pégalo en el correo que acabo de abrir.');
-    }else{
-      location.href = url;
-      brindis('Abrí tu correo con la solicitud lista. Queda anotada en el expediente.');
+
+    const rotulo = btnPedir.textContent;
+    btnPedir.disabled = true; btnPedir.textContent = 'Enviando…';
+    try{
+      const r = await pedirEnvioRecordatorio(c);
+      // `null` = el navegador no pudo leer la respuesta (Apps Script redirige
+      // a otro dominio). El correo casi seguro salió; se dice tal cual.
+      if(r && r.ok === false){
+        alarma('No se envió el recordatorio: ' + (r.error || 'el servidor lo rechazó.'));
+        btnPedir.disabled = false; btnPedir.textContent = rotulo;
+        return;
+      }
+      // Si el servidor contestó, manda su veredicto sobre el cargo: él tiene
+      // la fecha de vencimiento del Sheet, que es la buena.
+      const cobrar = r ? !!r.recargo : aplicaRecargo(c);
+      const seCobra = cobrar && !recargoDe(c);        // antes de aplicarlo
+      registrarSolicitud(faltan, 'correo', cobrar);
+      const aQuien = (r && r.enviadoA) ? r.enviadoA.join(', ') : correos.join(', ');
+      brindis(`Recordatorio enviado a ${aQuien}.`
+        + (seCobra ? ` Se le sumaron ${pesos(MULTA_DOCS)} por entrega tardía.` : '')
+        + (r ? '' : ' Te llega copia a rentas.chsas para confirmarlo.'));
+    }catch(err){
+      alarma('No pude comunicarme con el servidor de correo: ' + (err?.message || err) +
+             '. Usa «Copiar el texto» y mándalo a mano.');
+      btnPedir.disabled = false; btnPedir.textContent = rotulo;
     }
-    registrarSolicitud(faltan, 'correo');
   };
   const btnCopiarPedido = $('[data-copiarpedido]',raiz);
   if(btnCopiarPedido) btnCopiarPedido.onclick = async ()=>{
@@ -2082,6 +2189,19 @@ function cablearCliente(c){
     guardar(); pintarCliente(c);
     brindis(c.honorarioManual===0?'Honorarios en $0 (regalado).':'Honorarios actualizados.');
   };
+  // Quitar el cargo por entrega tardía (solo admin). Se anota, porque
+  // perdonar $70.000 es una decisión de la que alguien va a preguntar.
+  const btnQuitarRecargo = $('[data-quitarrecargo]',raiz);
+  if(btnQuitarRecargo) btnQuitarRecargo.onclick = ()=>{
+    const antes = recargoDe(c);
+    c.recargoDocs = 0; c.recargoDocsFecha = '';
+    c.notas.unshift({id:idNuevo('n'),
+      texto:`Se quitó el cargo por entrega tardía de ${pesos(antes)}.`,
+      paso:PASO_DOCS, origen:'equipo', autor:autorActual(), creado:hoyISO(), tipo:'recargo'});
+    guardar(); pintarCliente(c);
+    brindis(`Cargo de ${pesos(antes)} retirado.`);
+  };
+
   const btnHonReset = $('[data-honorarioreset]',raiz);
   if(btnHonReset) btnHonReset.onclick = ()=>{ c.honorarioManual = null; c.honorarioFijo = false; guardar(); pintarCliente(c); };
 
@@ -2679,8 +2799,8 @@ function pintarRecibo(mov){
       <div class="recibo__l"><dt>Cliente</dt><dd>${c?esc(c.sheet.nombre):'sin asignar'}</dd></div>
       ${mov.referencia?`<div class="recibo__l"><dt>Referencia</dt><dd>${esc(mov.referencia)}</dd></div>`:''}
       ${c?`<div class="recibo__l"><dt>Saldo del cliente</dt><dd>${
-        (()=>{ const s=Math.max(0,honorariosDe(c)-pagadoDe(c.cedula));
-               return honorariosDe(c) ? (s?pesos(s):'al día') : 'sin valor acordado'; })()
+        (()=>{ const s=Math.max(0,cobroDe(c)-pagadoDe(c.cedula));
+               return cobroDe(c) ? (s?pesos(s):'al día') : 'sin valor acordado'; })()
       }</dd></div>`:''}
     </dl>`;
   $('#recibo').hidden = false;
@@ -2751,6 +2871,7 @@ const platSig = x => firma({
   paso: x.paso, responsable: x.responsable||'',
   honorarioManual: x.honorarioManual??null, honorarioFijo: x.honorarioFijo??false,
   noObligado: x.noObligado??false,
+  recargoDocs: x.recargoDocs||0, recargoDocsFecha: x.recargoDocsFecha||'',
   tareas: x.tareas||{}
 });
 const espejoDe = ced => ESPEJO.clientes[ced] || (ESPEJO.clientes[ced] = vacioEspejo());
@@ -2789,7 +2910,7 @@ function resumenDe(c){
     docsRecibidos: c._cargado ? c.documentos.filter(d=>d.recibido).length : (b.docsRecibidos||0),
     docsCompletos: c._cargado ? catsFaltantes(c).length===0               : !!b.docsCompletos,
     abonado: pag,
-    saldo:   Math.max(0,honorariosDe(c)-pag)
+    saldo:   Math.max(0,cobroDe(c)-pag)
   };
 }
 
@@ -2811,6 +2932,8 @@ function escucharClientes(){
         honorarioManual: dat.honorarioManual ?? null,
         honorarioFijo:   dat.honorarioFijo ?? false,
         noObligado:      dat.noObligado ?? false,
+        recargoDocs:     dat.recargoDocs || 0,
+        recargoDocsFecha:dat.recargoDocsFecha || '',
         tareas:  dat.tareas || {},
         resumen: dat.resumen || null
       };
@@ -2838,6 +2961,8 @@ function escucharClientes(){
         honorarioManual: base.honorarioManual ?? null,
         honorarioFijo:   base.honorarioFijo ?? false,
         noObligado:      base.noObligado ?? false,
+        recargoDocs:     base.recargoDocs || 0,
+        recargoDocsFecha:base.recargoDocsFecha || '',
         tareas:  base.tareas || {},
         resumen: edicionLocalPendiente ? ant.resumen : srv.resumen,
         // El expediente (subcolecciones) se conserva si ya lo habíamos traído.
@@ -3010,7 +3135,7 @@ async function escribirDiferencia(){
     }
 
     c.resumen = resumenDe(c);
-    const cuerpo = {sheet:c.sheet, paso:c.paso, responsable:c.responsable||'', honorarioManual:c.honorarioManual??null, honorarioFijo:c.honorarioFijo??false, noObligado:c.noObligado??false, tareas:c.tareas||{}, resumen:c.resumen};
+    const cuerpo = {sheet:c.sheet, paso:c.paso, responsable:c.responsable||'', honorarioManual:c.honorarioManual??null, honorarioFijo:c.honorarioFijo??false, noObligado:c.noObligado??false, recargoDocs:c.recargoDocs||0, recargoDocsFecha:c.recargoDocsFecha||'', tareas:c.tareas||{}, resumen:c.resumen};
     const j = firma(cuerpo);
     if(e.doc !== j){ const ps = platSig(c); lote.set(ref, {...cuerpo, ...sello}, {merge:true}); alConfirmar.push(()=>{ e.doc=j; e.plat=ps; }); n++; }
   }
@@ -3215,7 +3340,7 @@ $('#btnDemo').onclick = ()=>{ demo(); refrescarSelectClientes(); guardar(); enru
 
 // Sello de versión: sirve para confirmar, a simple vista y en consola, qué
 // build está cargado (y descartar que sea una copia vieja en caché).
-const BUILD = 'v12 · 2026-08-10 · Correo de faltantes · semanas y etapas';
+const BUILD = 'v13 · 2026-08-10 · Recordatorio automático + cargo por entrega tardía';
 try{ const lb = document.getElementById('logoBuild'); if(lb) lb.textContent = BUILD; }catch(_){}
 console.log('%cRentas build '+BUILD, 'color:#5b8;font-weight:bold');
 
