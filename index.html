@@ -999,7 +999,7 @@ const honorariosDe = c => (c.honorarioManual!=null) ? c.honorarioManual : (c.she
 
 /* ── Cargo por entrega tardía de documentos ───────────────────
    No es la sanción de la DIAN: es la cláusula de gestión extemporánea
-   del contrato que el cliente aceptó en el cotizador —«un cargo
+   del acuerdo que el cliente aceptó en el cotizador —«un cargo
    adicional de SETENTA MIL PESOS ($70.000 COP) por cada proceso
    afectado»— junto con el compromiso de entregar los papeles UNA
    SEMANA ANTES del vencimiento. No está incluido en el precio
@@ -1779,9 +1779,9 @@ function correoFaltantes(c){
   faltan.forEach(f => L.push(`  • ${f}`));
   L.push('');
   if(aplicaRecargo(c)){
-    L.push(`En el contrato que usted aceptó se acordó entregar los documentos una semana antes del vencimiento, es decir a más tardar el ${fLarga(limite)}. Como a la fecha no los hemos recibido, se aplica el cargo adicional por gestión extemporánea de ${pesos(MULTA_DOCS)} por proceso, que se suma a sus honorarios.`);
+    L.push(`En el acuerdo que usted aceptó se acordó entregar los documentos una semana antes del vencimiento, es decir a más tardar el ${fLarga(limite)}. Como a la fecha no los hemos recibido, se aplica el cargo adicional por gestión extemporánea de ${pesos(MULTA_DOCS)} por proceso, que se suma a sus honorarios.`);
   }else{
-    L.push(`Recuerde que en el contrato que usted aceptó se acordó entregar los documentos una semana antes del vencimiento, es decir a más tardar el ${fLarga(limite)}. Pasada esa fecha se aplica un cargo adicional por gestión extemporánea de ${pesos(MULTA_DOCS)} por proceso. Todavía está a tiempo de evitarlo.`);
+    L.push(`Recuerde que en el acuerdo que usted aceptó se acordó entregar los documentos una semana antes del vencimiento, es decir a más tardar el ${fLarga(limite)}. Pasada esa fecha se aplica un cargo adicional por gestión extemporánea de ${pesos(MULTA_DOCS)} por proceso. Todavía está a tiempo de evitarlo.`);
   }
   L.push('');
   L.push('Le agradecemos enviárnoslos lo más pronto posible, respondiendo a este mismo correo.');
@@ -2003,7 +2003,7 @@ function pintarCliente(c){
           ${!hon && c.sheet.cotizado
             ? `<div class="par"><dt>Cotizado</dt><dd style="color:var(--tx-3)">${pesos(c.sheet.cotizado)}</dd></div>` : ''}
           ${recargoDe(c) ? `<div class="par">
-            <dt>Entrega tardía<br><span class="sub" style="display:block;max-width:22ch">Cargo del contrato${c.recargoDocsFecha?`, aplicado el ${fLarga(c.recargoDocsFecha)}`:''}</span></dt>
+            <dt>Entrega tardía<br><span class="sub" style="display:block;max-width:22ch">Cargo del acuerdo${c.recargoDocsFecha?`, aplicado el ${fLarga(c.recargoDocsFecha)}`:''}</span></dt>
             <dd><span style="color:var(--alerta)">+ ${pesos(recargoDe(c))}</span>${esAdmin
               ? ` <button class="pastilla" data-quitarrecargo title="Quitar el cargo por entrega tardía">↺</button>` : ''}</dd></div>
           <div class="par"><dt>Total a cobrar</dt><dd>${pesos(cobroDe(c))}</dd></div>` : ''}
@@ -3340,7 +3340,7 @@ $('#btnDemo').onclick = ()=>{ demo(); refrescarSelectClientes(); guardar(); enru
 
 // Sello de versión: sirve para confirmar, a simple vista y en consola, qué
 // build está cargado (y descartar que sea una copia vieja en caché).
-const BUILD = 'v13 · 2026-08-10 · Recordatorio automático + cargo por entrega tardía';
+const BUILD = 'v14 · 2026-08-10 · Recordatorio automático + cargo por entrega tardía';
 try{ const lb = document.getElementById('logoBuild'); if(lb) lb.textContent = BUILD; }catch(_){}
 console.log('%cRentas build '+BUILD, 'color:#5b8;font-weight:bold');
 

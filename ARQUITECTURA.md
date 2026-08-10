@@ -168,7 +168,9 @@ El `token` compartido es un cerrojo de cortesía: la consola es HTML público y 
 
 ### El cargo por entrega tardía — `$70.000`
 
-**No es la sanción de la DIAN**, es la cláusula de gestión extemporánea del contrato que el cliente aceptó en el cotizador: «*aplicar un cargo adicional por gestión extemporánea de SETENTA MIL PESOS ($70.000 COP) por cada proceso afectado*», junto con el compromiso de entregar los papeles **una semana antes** del vencimiento. Los dos números viven en `MULTA_DOCS` y `DIAS_ENTREGA`, en `index.html` y en `apps_script.js`; en el cotizador está el mismo `MULTA_DOCS`, **informativo** — no entra en el precio cotizado, y por eso la plataforma lo suma aparte.
+**No es la sanción de la DIAN**, es la cláusula de gestión extemporánea del acuerdo que el cliente aceptó en el cotizador: «*aplicar un cargo adicional por gestión extemporánea de SETENTA MIL PESOS ($70.000 COP) por cada proceso afectado*», junto con el compromiso de entregar los papeles **una semana antes** del vencimiento. Los dos números viven en `MULTA_DOCS` y `DIAS_ENTREGA`, en `index.html` y en `recordatorios.gs`; en el cotizador está el mismo `MULTA_DOCS`, **informativo** — no entra en el precio cotizado, y por eso la plataforma lo suma aparte.
+
+El correo dice «**el acuerdo que usted aceptó**», nunca «el contrato»: desde que se quitó la generación de contratos, lo que el cliente acepta son los Términos y Condiciones en la plataforma —así queda registrado en RESPUESTAS, como *«T&C aceptados en plataforma»*—, y cobrarle invocando un documento que no existe es la clase de detalle que convierte un cobro en una discusión.
 
 - Se aplica **en el mismo acto en que se le avisa**, nunca antes: el correo que sale le dice al cliente que se le está cobrando. Cobrar en silencio sería peor que no cobrar.
 - La condición es *pasó la fecha de entrega* **y** *siguen faltando papeles*. La decide el **servidor** (tiene la fecha del Sheet, que es la buena) y la devuelve en `recargo`; la plataforma la obedece.
