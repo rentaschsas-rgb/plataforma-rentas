@@ -1,0 +1,3231 @@
+<!DOCTYPE html>
+<html lang="es" data-tema="oscuro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Renta 2026 · Consola</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap">
+
+<!-- SDK compat: se usa desde un script normal, sin módulos. -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+
+<style>
+/* ══════════════════════════════════════════════════════════════
+   RENTA 2026 — consola de expedientes
+   Poppins · vidrio esmerilado · azul profundo / gris claro
+   ══════════════════════════════════════════════════════════════ */
+
+:root{
+  --fuente:'Poppins','Segoe UI',system-ui,-apple-system,sans-serif;
+  --t-xs:12px; --t-s:13.5px; --t-m:15px; --t-l:17px; --t-xl:22px; --t-2xl:30px;
+  /* Escala aparte para las cifras: son lo que se lee de lejos. */
+  --n-s:15px; --n-m:17px; --n-l:26px; --n-xl:34px; --n-2xl:40px;
+  --u:8px;
+  --r-xl:22px; --r-l:16px; --r-m:11px; --r-s:8px;
+  --resorte:cubic-bezier(.32,.72,0,1);
+  --velo:blur(28px) saturate(180%);
+}
+
+html[data-tema="oscuro"]{
+  color-scheme:dark;              /* desplegables, calendarios y barras nativas en oscuro */
+  --solido:#16253A;               /* fondo opaco: las <option> no admiten transparencia */
+  --fondo:#050A12;
+  --mancha-1:rgba(10,132,255,.16);
+  --mancha-2:rgba(52,120,246,.10);
+  --vidrio:rgba(21,35,55,.58);
+  --vidrio-alto:rgba(31,48,73,.62);
+  --vidrio-hover:rgba(41,62,92,.55);
+  --linea:rgba(255,255,255,.09);
+  --linea-suave:rgba(255,255,255,.05);
+  --tx:#E9F0F9; --tx-2:#9CB2CD; --tx-3:#6A829E;
+  --acento:#0A84FF; --acento-tx:#5AB0FF; --acento-velo:rgba(10,132,255,.18);
+  --ok:#30D158; --alerta:#FF9F0A; --riesgo:#FF453A;
+  --sombra:0 1px 1px rgba(0,0,0,.25),0 8px 28px rgba(0,0,0,.35);
+  --brillo:inset 0 1px 0 rgba(255,255,255,.06);
+}
+html[data-tema="claro"]{
+  color-scheme:light;
+  --solido:#FFFFFF;
+  --fondo:#E8EEF6;
+  --mancha-1:rgba(0,122,255,.16);
+  --mancha-2:rgba(88,140,230,.12);
+  --vidrio:rgba(255,255,255,.68);
+  --vidrio-alto:rgba(255,255,255,.82);
+  --vidrio-hover:rgba(255,255,255,.95);
+  --linea:rgba(9,26,48,.10);
+  --linea-suave:rgba(9,26,48,.06);
+  --tx:#0A1A2E; --tx-2:#53688A; --tx-3:#7D91AE;
+  --acento:#007AFF; --acento-tx:#0062CC; --acento-velo:rgba(0,122,255,.12);
+  --ok:#248A3D; --alerta:#B25E00; --riesgo:#D70015;
+  --sombra:0 1px 1px rgba(9,26,48,.04),0 8px 26px rgba(9,26,48,.09);
+  --brillo:inset 0 1px 0 rgba(255,255,255,.7);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;color:var(--tx);
+  font-family:var(--fuente);font-size:var(--t-m);line-height:1.55;
+  letter-spacing:-.01em;-webkit-font-smoothing:antialiased;
+  background:var(--fondo);
+  background-image:
+    radial-gradient(1100px 700px at 12% -8%, var(--mancha-1), transparent 60%),
+    radial-gradient(900px 600px at 92% 4%, var(--mancha-2), transparent 62%);
+  background-attachment:fixed;
+}
+button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
+button{background:none;border:0;cursor:pointer}
+a{color:var(--acento-tx);text-decoration:none}
+:focus-visible{outline:2px solid var(--acento);outline-offset:2px;border-radius:var(--r-s)}
+::selection{background:var(--acento-velo)}
+option,optgroup{background:var(--solido);color:var(--tx)}
+
+/* ── Armazón ──────────────────────────────────────────────── */
+.app{display:grid;grid-template-columns:250px 1fr;min-height:100vh}
+.lateral{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:var(--u);padding:calc(var(--u)*2)}
+.tarjeta-vidrio{
+  background:var(--vidrio);
+  -webkit-backdrop-filter:var(--velo);backdrop-filter:var(--velo);
+  border:1px solid var(--linea);border-radius:var(--r-xl);
+  box-shadow:var(--sombra),var(--brillo);
+}
+.logo{padding:calc(var(--u)*2.5)}
+.logo__t{font-size:var(--t-l);font-weight:600;letter-spacing:-.02em}
+.logo__s{font-size:var(--t-xs);color:var(--tx-3);margin-top:2px}
+
+.nav{padding:var(--u);display:flex;flex-direction:column;gap:3px;flex:1;overflow-y:auto}
+.nav__rot{font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-3);padding:calc(var(--u)*2) calc(var(--u)*1.5) 6px}
+.nav__b{display:flex;align-items:center;gap:calc(var(--u)*1.5);padding:11px calc(var(--u)*1.75);
+  border-radius:var(--r-m);color:var(--tx-2);text-align:left;width:100%;font-size:var(--t-s);
+  transition:background .2s var(--resorte),color .2s var(--resorte),transform .2s var(--resorte)}
+.nav__b:hover{background:var(--vidrio-hover);color:var(--tx)}
+.nav__b:active{transform:scale(.975)}
+.nav__b[aria-current="page"]{background:var(--acento-velo);color:var(--tx);font-weight:600}
+.nav__ico{width:18px;flex:none;text-align:center;font-size:14px;color:var(--tx-3)}
+.nav__b[aria-current="page"] .nav__ico{color:var(--acento-tx)}
+.nav__n{margin-left:auto;font-size:11.5px;color:var(--tx-3);background:var(--linea);border-radius:999px;padding:1px 8px;min-width:24px;text-align:center}
+.nav__b[aria-current="page"] .nav__n{background:var(--acento);color:#fff;font-weight:600}
+.lateral__pie{padding:calc(var(--u)*1.5);display:flex;gap:var(--u);align-items:center}
+.cuenta{font-size:11px;color:var(--tx-3);flex:1;min-width:0;padding-left:6px;display:flex;align-items:center;gap:8px}
+.cuenta__n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+
+.principal{min-width:0;display:flex;flex-direction:column;padding:calc(var(--u)*2) calc(var(--u)*2) calc(var(--u)*2) 0}
+.cabecera{display:flex;align-items:center;gap:calc(var(--u)*2);flex-wrap:wrap;
+  padding:calc(var(--u)*2.5) calc(var(--u)*3);position:sticky;top:calc(var(--u)*2);z-index:6;margin-bottom:calc(var(--u)*3)}
+.cabecera__t{font-size:var(--t-xl);font-weight:600;letter-spacing:-.03em;margin:0;line-height:1.2}
+.cabecera__s{font-size:var(--t-s);color:var(--tx-2);margin:3px 0 0}
+.cabecera__acc{margin-left:auto;display:flex;gap:var(--u);align-items:center}
+.contenido{flex:1;min-width:0;padding:0 0 calc(var(--u)*6)}
+.vista[hidden]{display:none}
+
+/* ── Controles ────────────────────────────────────────────── */
+.btn{border:1px solid var(--linea);background:var(--vidrio-alto);
+  -webkit-backdrop-filter:var(--velo);backdrop-filter:var(--velo);
+  border-radius:999px;padding:9px calc(var(--u)*2);font-size:var(--t-s);
+  display:inline-flex;align-items:center;gap:8px;white-space:nowrap;box-shadow:var(--brillo);
+  transition:transform .2s var(--resorte),background .2s var(--resorte),border-color .2s var(--resorte)}
+.btn:hover{background:var(--vidrio-hover);border-color:var(--acento)}
+.btn:active{transform:scale(.96)}
+.btn--fuerte{background:var(--acento);border-color:transparent;color:#fff;font-weight:600}
+.btn--fuerte:hover{background:var(--acento);filter:brightness(1.12)}
+.btn--icono{padding:9px 12px}
+.btn--chico{padding:5px 12px;font-size:var(--t-xs)}
+.btn[disabled]{opacity:.4;pointer-events:none}
+
+.campo{border:1px solid var(--linea);background:var(--vidrio-alto);border-radius:var(--r-m);
+  padding:9px 12px;font-size:var(--t-s);width:100%;
+  transition:border-color .2s var(--resorte),background .2s var(--resorte)}
+.campo:focus{border-color:var(--acento);outline:none;background:var(--vidrio-hover)}
+.campo::placeholder{color:var(--tx-3)}
+select.campo{cursor:pointer;appearance:none;padding-right:26px;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 14px) 50%,calc(100% - 9px) 50%;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+
+/* ── Indicadores ──────────────────────────────────────────── */
+.cuadros{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:calc(var(--u)*2);margin-bottom:calc(var(--u)*3)}
+.cuadro{padding:calc(var(--u)*2.5);position:relative;overflow:hidden;transition:transform .25s var(--resorte)}
+.cuadro:hover{transform:translateY(-2px)}
+.cuadro__et{font-size:var(--t-xs);color:var(--tx-2)}
+.cuadro__n{font-size:var(--n-xl);font-weight:600;line-height:1.15;margin-top:6px;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.cuadro__pie{font-size:11.5px;color:var(--tx-3);margin-top:3px}
+.cuadro--riesgo .cuadro__n{color:var(--riesgo)}
+.cuadro--alerta .cuadro__n{color:var(--alerta)}
+.cuadro--ok .cuadro__n{color:var(--ok)}
+.cuadro--pulsable{cursor:pointer;text-align:left;width:100%;display:block}
+.cuadro--pulsable:active{transform:scale(.98)}
+
+/* ══ CIFRAS DE LA TEMPORADA ════════════════════════════════════
+   Las cuatro que importan, en fila, sobre el calendario.
+   ══════════════════════════════════════════════════════════════ */
+.cifras{display:flex;gap:calc(var(--u)*4);flex-wrap:wrap;align-items:flex-end;
+  padding:calc(var(--u)*3) calc(var(--u)*3.5);margin-bottom:calc(var(--u)*3)}
+.cifra{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left;
+  display:flex;flex-direction:column;gap:2px;border-bottom:2px solid transparent;transition:border-color .2s var(--resorte)}
+.cifra:hover{border-bottom-color:var(--linea)}
+.cifra[aria-pressed="true"]{border-bottom-color:var(--acento)}
+.cifra b{font-size:var(--n-xl);font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
+.cifra span{font-size:var(--t-xs);color:var(--tx-3);white-space:nowrap}
+.cifra--riesgo b{color:var(--riesgo)} .cifra--alerta b{color:var(--alerta)} .cifra--ok b{color:var(--ok)}
+.cifras__nota{margin-left:auto;font-size:var(--t-xs);color:var(--tx-3);line-height:1.6;max-width:34ch;text-align:right}
+
+/* ── Calendario por semanas ───────────────────────────────── */
+.linea{padding:calc(var(--u)*3);margin-bottom:calc(var(--u)*3);overflow-x:auto}
+.linea__rot{font-size:var(--t-xs);font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-3);display:block;margin-bottom:calc(var(--u)*3)}
+.linea__pista{display:flex;align-items:flex-end;gap:6px;min-width:760px}
+.sem{flex:1;display:flex;flex-direction:column;align-items:center;gap:9px;position:relative;
+  padding:6px 2px calc(var(--u)*3);border-radius:var(--r-m);transition:background .2s var(--resorte)}
+.sem:hover{background:var(--linea-suave)}
+.sem__pila{display:flex;flex-direction:column-reverse;gap:3px;min-height:76px;justify-content:flex-start;width:100%;align-items:center}
+.pt{width:100%;max-width:32px;height:6px;border-radius:999px;background:var(--tx-3);opacity:.45;
+  transition:transform .2s var(--resorte),opacity .2s var(--resorte)}
+.pt:hover{transform:scaleX(1.15);opacity:1}
+.pt--riesgo{background:var(--riesgo);opacity:1}
+.pt--alerta{background:var(--alerta);opacity:1}
+.pt--ok{background:var(--ok);opacity:.85}
+.sem__f{font-size:11.5px;color:var(--tx-3);width:100%;text-align:center;padding-top:9px;border-top:1px solid var(--linea-suave)}
+.sem--ahora{background:var(--acento-velo)}
+.sem--ahora .sem__f{color:var(--acento-tx);font-weight:600;border-top-color:var(--acento)}
+.sem--ahora::after{content:"esta semana";position:absolute;bottom:7px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--acento-tx);white-space:nowrap}
+/* La semana es pulsable: al tocarla, la tabla de abajo se queda con los
+   vencimientos de esa semana. Como es un <button>, hay que apagarle los
+   estilos que trae de fábrica para que siga viéndose como una columna. */
+button.sem{background:none;border:0;font:inherit;color:inherit;cursor:pointer;text-align:center}
+.sem--sel{background:var(--acento-velo);box-shadow:inset 0 0 0 1px var(--acento)}
+.sem--sel .sem__f{color:var(--acento-tx);font-weight:600}
+.linea__llaves{display:flex;gap:calc(var(--u)*3);flex-wrap:wrap;margin-top:calc(var(--u)*2.5);font-size:var(--t-xs);color:var(--tx-2)}
+.llave{display:inline-flex;align-items:center;gap:7px}
+.llave i{width:16px;height:6px;border-radius:999px;display:inline-block}
+.linea__pie{margin-top:calc(var(--u)*2);font-size:var(--t-xs);color:var(--tx-3)}
+
+/* ── Etapas visibles: apagar una la esconde de la tabla ────── */
+.etapas{display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+  padding:calc(var(--u)*1.5) calc(var(--u)*2.5);border-bottom:1px solid var(--linea)}
+.etapas__r{font-size:11.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--tx-3);margin-right:calc(var(--u))}
+.etq{font:inherit;font-size:var(--t-xs);font-weight:500;border-radius:999px;padding:4px 12px;
+  white-space:nowrap;cursor:pointer;border:1px solid transparent;background:var(--linea);color:var(--tx-3);
+  transition:transform .2s var(--resorte),background .15s ease,color .15s ease}
+.etq[aria-pressed="true"]{background:var(--acento-velo);color:var(--acento-tx);border-color:var(--acento)}
+.etq[aria-pressed="false"]{opacity:.55;text-decoration:line-through}
+.etq:active{transform:scale(.94)}
+.etq--todas{background:none;border-color:var(--linea);color:var(--tx-2);text-decoration:none;opacity:1}
+
+/* ── Tablas ───────────────────────────────────────────────── */
+.marco{overflow:hidden}
+.marco__barra{display:flex;align-items:center;gap:var(--u);flex-wrap:wrap;
+  padding:calc(var(--u)*2) calc(var(--u)*2.5);border-bottom:1px solid var(--linea)}
+.marco__cuenta{font-size:var(--t-xs);color:var(--tx-2);margin-right:auto}
+.desplaza{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+thead th{font-size:11.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--tx-2);
+  text-align:left;padding:14px calc(var(--u)*2) 10px;white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s ease}
+thead th:hover{color:var(--tx)}
+th .orden{color:var(--acento-tx);margin-left:5px;font-size:9px}
+tr.filtros td{padding:0 calc(var(--u)*1.5) 12px}
+tr.filtros .campo{font-size:var(--t-xs);padding:6px 10px;border-radius:var(--r-s)}
+tr.filtros .campo[data-activo="1"]{border-color:var(--acento);background:var(--acento-velo)}
+tbody tr{border-top:1px solid var(--linea-suave)}
+tbody tr.clic{cursor:pointer;transition:background .15s var(--resorte)}
+tbody tr.clic:hover{background:var(--vidrio-hover)}
+td{padding:14px calc(var(--u)*2);vertical-align:middle;font-size:var(--t-s)}
+td.num,th.num{text-align:right}
+.nom{font-weight:600;font-size:var(--t-s);letter-spacing:-.01em}
+.sub{font-size:var(--t-xs);color:var(--tx-3);margin-top:2px}
+.dato{font-size:var(--n-s);font-variant-numeric:tabular-nums;white-space:nowrap}
+/* Correo en la tabla: acotado y con «…», para que el nombre mande */
+.correo-cel{display:inline-block;max-width:190px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;vertical-align:middle;font-size:var(--t-xs);color:var(--tx-3)}
+.dato--riesgo{color:var(--riesgo);font-weight:600}
+.dato--ok{color:var(--ok)}
+.dato--alerta{color:var(--alerta);font-weight:600}
+
+.pastilla{display:inline-block;font-size:var(--t-xs);font-weight:500;border-radius:999px;
+  padding:4px 12px;white-space:nowrap;background:var(--linea);color:var(--tx-2)}
+.pastilla--curso{background:var(--acento-velo);color:var(--acento-tx)}
+.pastilla--alerta{background:color-mix(in srgb,var(--alerta) 16%,transparent);color:var(--alerta)}
+.pastilla--riesgo{background:color-mix(in srgb,var(--riesgo) 16%,transparent);color:var(--riesgo)}
+.pastilla--ok{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+button.pastilla{cursor:pointer;transition:transform .2s var(--resorte)}
+button.pastilla:active{transform:scale(.94)}
+
+.nada{padding:calc(var(--u)*7) calc(var(--u)*3);text-align:center;color:var(--tx-2)}
+.nada__t{font-size:var(--t-l);color:var(--tx);margin-bottom:6px;font-weight:500}
+.nada p{margin:0 0 calc(var(--u)*2);font-size:var(--t-s)}
+
+/* ══ PÁGINA DE CLIENTE ════════════════════════════════════ */
+.exp{display:grid;grid-template-columns:1fr 340px;gap:calc(var(--u)*3);align-items:start}
+.exp__col{display:flex;flex-direction:column;gap:calc(var(--u)*3);min-width:0}
+.bloque{padding:calc(var(--u)*3)}
+.bloque__r{font-size:11.5px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-3);
+  margin-bottom:calc(var(--u)*2);display:flex;align-items:center;gap:var(--u)}
+.bloque__r span{margin-left:auto;text-transform:none;letter-spacing:0;color:var(--tx-2)}
+
+/* Bloque plegable: el expediente abre en silencio y tú decides qué mirar.
+   El rótulo pasa a ser el tirador, así que crece y se vuelve pulsable. */
+.bloque--pleg{padding:0}
+.bloque--pleg > summary{list-style:none;cursor:pointer;padding:calc(var(--u)*2.5) calc(var(--u)*3);
+  margin:0;border-radius:var(--r-l);transition:background .2s var(--resorte)}
+.bloque--pleg > summary::-webkit-details-marker{display:none}
+.bloque--pleg > summary:hover{background:var(--linea-suave)}
+.bloque--pleg > summary:focus-visible{outline:2px solid var(--acento);outline-offset:-2px}
+.bloque--pleg > summary::before{content:"›";font-size:16px;line-height:1;color:var(--tx-3);
+  transition:transform .2s var(--resorte);display:inline-block}
+.bloque--pleg[open] > summary::before{transform:rotate(90deg)}
+.bloque--pleg[open] > summary{border-bottom:1px solid var(--linea-suave);border-radius:var(--r-l) var(--r-l) 0 0}
+.bloque__cuerpo{padding:calc(var(--u)*2.5) calc(var(--u)*3) calc(var(--u)*3)}
+.par{display:flex;justify-content:space-between;gap:var(--u);padding:8px 0;font-size:var(--t-s);border-bottom:1px solid var(--linea-suave)}
+.par:last-child{border-bottom:0}
+.par dt{color:var(--tx-2)}
+.par dd{margin:0;font-variant-numeric:tabular-nums;text-align:right;font-size:var(--n-m);font-weight:500}
+
+/* Barra de «pedir los papeles que faltan», arriba de las categorías */
+.pedir{display:flex;align-items:center;gap:var(--u);flex-wrap:wrap;
+  padding:calc(var(--u)*1.5) calc(var(--u)*2);margin-bottom:calc(var(--u)*2);
+  border:1px solid var(--linea);border-radius:var(--r-l);background:var(--linea-suave)}
+.pedir--alerta{border-color:color-mix(in srgb,var(--alerta) 45%,transparent);
+  background:color-mix(in srgb,var(--alerta) 8%,transparent)}
+.pedir__x{font-size:var(--t-xs);color:var(--tx-3);margin-left:auto;text-align:right;max-width:32ch;line-height:1.5}
+
+/* pasos plegables */
+.hito{border:1px solid var(--linea);border-radius:var(--r-l);margin-bottom:var(--u);overflow:hidden;
+  background:var(--linea-suave);transition:border-color .2s var(--resorte)}
+.hito[open]{border-color:var(--acento)}
+.hito--actual{border-color:var(--acento);background:var(--acento-velo)}
+.hito__cab{display:flex;align-items:center;gap:calc(var(--u)*1.5);padding:13px calc(var(--u)*2);
+  cursor:pointer;list-style:none;transition:background .15s var(--resorte)}
+.hito__cab::-webkit-details-marker{display:none}
+.hito__cab:hover{background:var(--vidrio-hover)}
+.hito__n{width:26px;height:26px;flex:none;border-radius:999px;display:grid;place-items:center;
+  font-size:var(--t-xs);background:var(--linea);color:var(--tx-3)}
+.hito--hecho .hito__n{background:var(--ok);color:#fff}
+.hito--actual .hito__n{background:var(--acento);color:#fff;font-weight:600}
+.hito__t{flex:1;font-size:var(--t-s)}
+.hito--actual .hito__t{font-weight:600}
+.hito__f{font-size:11.5px;color:var(--tx-3);font-variant-numeric:tabular-nums}
+.hito__cuerpo{padding:0 calc(var(--u)*2) calc(var(--u)*2);border-top:1px solid var(--linea-suave)}
+.hito__acc{padding:calc(var(--u)*1.5) 0}
+
+/* documentos */
+.cat{border:1px solid var(--linea);border-radius:var(--r-l);margin-bottom:var(--u);overflow:hidden;background:var(--linea-suave)}
+.cat[open]{border-color:var(--acento)}
+.cat__cab{display:flex;align-items:center;gap:calc(var(--u)*1.5);padding:13px calc(var(--u)*2);cursor:pointer;list-style:none}
+.cat__cab::-webkit-details-marker{display:none}
+.cat__cab:hover{background:var(--vidrio-hover)}
+.cat__t{flex:1;font-size:var(--t-s)}
+.cat__cuerpo{padding:0 calc(var(--u)*2) calc(var(--u)*2);border-top:1px solid var(--linea-suave)}
+.papel{display:flex;align-items:center;gap:calc(var(--u)*1.5);padding:11px 0;border-bottom:1px solid var(--linea-suave);font-size:var(--t-s)}
+.papel:last-of-type{border-bottom:0}
+.papel__t{flex:1;min-width:0}
+.papel__n{display:block;overflow:hidden;text-overflow:ellipsis}
+.papel--si .papel__n{color:var(--ok)}
+.papel__x{font-size:var(--t-xs);color:var(--tx-3);margin-top:2px}
+.agregar{display:flex;gap:var(--u);margin-top:calc(var(--u)*1.5);padding-top:calc(var(--u)*1.5);border-top:1px solid var(--linea-suave)}
+.agregar .campo{flex:1;font-size:var(--t-xs);padding:7px 11px}
+
+/* interruptor iOS */
+.sw{width:44px;height:26px;border-radius:999px;background:var(--linea);position:relative;flex:none;
+  transition:background .25s var(--resorte);cursor:pointer;border:0}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:999px;
+  background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .25s var(--resorte)}
+.sw[aria-checked="true"]{background:var(--ok)}
+.sw[aria-checked="true"]::after{transform:translateX(18px)}
+.sw--chico{width:36px;height:21px}
+.sw--chico::after{width:17px;height:17px}
+.sw--chico[aria-checked="true"]::after{transform:translateX(15px)}
+
+/* comentarios */
+.nota{background:var(--linea-suave);border-radius:var(--r-m);padding:calc(var(--u)*1.5) calc(var(--u)*2);margin-bottom:var(--u)}
+.nota:last-of-type{margin-bottom:0}
+.nota--cli{background:color-mix(in srgb,var(--alerta) 10%,transparent)}
+.nota__c{font-size:11px;color:var(--tx-3);display:flex;gap:var(--u);align-items:center}
+.nota__c em{font-style:normal;margin-left:auto;color:var(--acento-tx)}
+/* respeta los saltos de línea que se escriban con Shift+Enter */
+.nota__x{font-size:var(--t-s);margin-top:3px;white-space:pre-wrap;word-break:break-word}
+.nota__h{display:inline-flex;gap:2px;flex:none}
+.nota__b{background:none;border:0;cursor:pointer;font-size:12px;line-height:1;padding:2px 4px;border-radius:var(--r-s);opacity:.55;color:var(--tx-2)}
+.nota__b:hover{opacity:1;background:var(--vidrio-alto)}
+.nota--edit{background:var(--vidrio-alto)}
+.nota__acc{display:flex;gap:var(--u);margin-top:var(--u);justify-content:flex-end}
+.comentar{display:flex;gap:var(--u);margin-top:calc(var(--u)*1.5);align-items:flex-end}
+.comentar .campo{flex:1}
+.campo--area{resize:vertical;min-height:38px;font:inherit;line-height:1.4}
+.sinnota{color:var(--tx-3);font-size:var(--t-xs);margin:0 0 var(--u)}
+
+/* ── Reparto ──────────────────────────────────────────────── */
+.reparto{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:calc(var(--u)*2);margin-bottom:calc(var(--u)*3)}
+.socio{padding:calc(var(--u)*2.5)}
+.socio__n{font-size:var(--t-l);font-weight:600;display:flex;align-items:center;gap:var(--u);letter-spacing:-.02em}
+.socio__q{font-size:var(--t-xs);color:var(--acento-tx);background:var(--acento-velo);border-radius:999px;padding:2px 10px;font-weight:500}
+.socio__l{display:flex;justify-content:space-between;font-size:var(--t-s);padding:8px 0;border-bottom:1px solid var(--linea-suave)}
+.socio__l:last-of-type{border-bottom:0}
+.socio__l span:last-child{font-variant-numeric:tabular-nums;font-size:var(--n-m);font-weight:500}
+.saldo{margin-top:calc(var(--u)*1.5);padding:calc(var(--u)*1.5) calc(var(--u)*2);border-radius:var(--r-m);font-size:var(--t-s);background:var(--linea-suave)}
+.saldo strong{font-variant-numeric:tabular-nums;font-size:var(--n-m)}
+.saldo--debe{background:color-mix(in srgb,var(--riesgo) 12%,transparent);color:var(--riesgo)}
+.saldo--favor{background:color-mix(in srgb,var(--ok) 12%,transparent);color:var(--ok)}
+.saldo--cero{color:var(--tx-2)}
+/* Vive dentro del diálogo, así que no lleva relleno ni borde propios. */
+.form-mov{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:calc(var(--u)*2);align-items:end}
+.form-mov[hidden]{display:none}
+.form-mov label{display:block;font-size:var(--t-xs);color:var(--tx-2);margin-bottom:6px}
+
+/* ── Modal ────────────────────────────────────────────────── */
+.modal{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:calc(var(--u)*3);
+  background:rgba(3,8,16,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.modal[hidden]{display:none}
+.modal__caja{width:min(700px,100%);max-height:88vh;overflow-y:auto;
+  background:var(--vidrio-alto);-webkit-backdrop-filter:var(--velo);backdrop-filter:var(--velo);
+  border:1px solid var(--linea);border-radius:var(--r-xl);box-shadow:var(--sombra),var(--brillo)}
+.modal__cab{padding:calc(var(--u)*3);border-bottom:1px solid var(--linea);display:flex;align-items:flex-start;gap:var(--u)}
+.modal__t{font-size:var(--t-l);font-weight:600;flex:1;letter-spacing:-.02em}
+.modal__cu{padding:calc(var(--u)*3)}
+.modal__pie{padding:calc(var(--u)*3);border-top:1px solid var(--linea);display:flex;gap:var(--u);justify-content:flex-end;align-items:center;flex-wrap:wrap}
+.pegar{width:100%;min-height:180px;font-family:var(--fuente);font-size:var(--t-xs);
+  border:1px solid var(--linea);border-radius:var(--r-l);background:var(--vidrio);
+  padding:calc(var(--u)*1.5);resize:vertical;line-height:1.7}
+.pasos-imp{font-size:var(--t-s);color:var(--tx-2);margin:0 0 calc(var(--u)*2.5);padding-left:20px}
+.pasos-imp li{margin-bottom:7px}
+.aviso{font-size:var(--t-xs);margin-right:auto}
+.aviso--mal{color:var(--riesgo)}
+.aviso--bien{color:var(--ok)}
+kbd{background:var(--linea);border-radius:5px;padding:1px 6px;font-size:11.5px}
+
+/* ── Cotizador ────────────────────────────────────────────── */
+.cotz{display:grid;grid-template-columns:1.15fr .85fr;gap:calc(var(--u)*2.5);align-items:start}
+.cotz__form{padding:calc(var(--u)*3);display:flex;flex-direction:column;gap:calc(var(--u)*2)}
+.cotz__grid{display:grid;grid-template-columns:1fr 1fr;gap:calc(var(--u)*2)}
+.cotz__campo{display:flex;flex-direction:column;gap:6px;font-size:var(--t-s);color:var(--tx-2);font-weight:500}
+.cotz__op{color:var(--tx-3);font-weight:400}
+.cotz__acc{display:flex;flex-wrap:wrap;gap:var(--u);margin-top:calc(var(--u)*.5)}
+.cotz__aviso{font-size:var(--t-xs);margin:0;min-height:1.2em}
+.cotz__aviso--bien{color:var(--ok)}
+.cotz__aviso--mal{color:var(--riesgo)}
+.cotz__prev{padding:calc(var(--u)*3);position:sticky;top:calc(var(--u)*2)}
+.cotz__texto{white-space:pre-wrap;word-break:break-word;font-family:var(--fuente);
+  font-size:var(--t-s);line-height:1.6;color:var(--tx);margin:calc(var(--u)*1.5) 0 0}
+@media (max-width:900px){.cotz{grid-template-columns:1fr}.cotz__grid{grid-template-columns:1fr}
+  .cotz__prev{position:static}}
+
+/* ── Aviso flotante ───────────────────────────────────────── */
+.brindis{position:fixed;left:50%;bottom:calc(var(--u)*4);transform:translate(-50%,20px);
+  background:var(--vidrio-alto);-webkit-backdrop-filter:var(--velo);backdrop-filter:var(--velo);
+  border:1px solid var(--linea);border-radius:999px;box-shadow:var(--sombra),var(--brillo);
+  padding:11px calc(var(--u)*3);font-size:var(--t-s);z-index:50;
+  display:flex;align-items:center;gap:calc(var(--u)*1.5);
+  opacity:0;pointer-events:none;transition:opacity .28s var(--resorte),transform .28s var(--resorte)}
+.brindis[data-on="1"]{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.brindis button{color:var(--acento-tx);font-weight:600;font-size:var(--t-s)}
+
+/* ── Angosto ──────────────────────────────────────────────── */
+@media (max-width:1100px){ .exp{grid-template-columns:1fr} }
+@media (max-width:900px){
+  .app{grid-template-columns:1fr}
+  .lateral{position:fixed;left:0;right:0;bottom:0;top:auto;height:auto;padding:0;z-index:20;flex-direction:row;align-items:stretch}
+  .logo{display:none}
+  .lateral__pie .cuenta__n{display:none}
+  .nav{flex-direction:row;padding:8px 8px calc(8px + env(safe-area-inset-bottom));gap:2px;overflow:visible;
+    background:var(--vidrio-alto);-webkit-backdrop-filter:var(--velo);backdrop-filter:var(--velo);
+    border-top:1px solid var(--linea);border-radius:0;width:100%}
+  .nav__rot{display:none}
+  .nav__b{position:relative;flex-direction:column;gap:3px;font-size:10.5px;padding:7px 4px;flex:1;text-align:center;justify-content:center}
+  .nav__n{position:absolute;top:2px;right:calc(50% - 22px);margin:0;font-size:10px;padding:0 5px}
+  .lateral__pie{position:fixed;top:calc(var(--u)*1.5);right:calc(var(--u)*1.5);z-index:21;
+    display:flex;gap:8px;align-items:center;padding:5px 6px 5px 10px;border-radius:999px;
+    background:var(--vidrio-alto);-webkit-backdrop-filter:var(--velo);backdrop-filter:var(--velo);
+    border:1px solid var(--linea);box-shadow:var(--sombra)}
+  .lateral__pie .cuenta{flex:none;padding:0}
+  .principal{padding:calc(var(--u)*1.5);padding-bottom:96px}
+  .cabecera{padding:calc(var(--u)*2);top:calc(var(--u)*1.5)}
+}
+/* Teléfonos: menos aire en tablas, cifras y tarjetas; nada se sale de la pantalla */
+@media (max-width:640px){
+  thead th{padding:11px 10px 8px}
+  td{padding:11px 10px;font-size:var(--t-xs)}
+  .cifras{gap:calc(var(--u)*2.5);padding:calc(var(--u)*2.5)}
+  .cifra b{font-size:27px}
+  .cifras__nota{margin-left:0;text-align:left;max-width:none;flex-basis:100%}
+  .cabecera__t{font-size:var(--t-l)}
+  .exp__col{gap:calc(var(--u)*2)}
+  .exp{gap:calc(var(--u)*2)}
+  .modal__cu,.modal__cab,.modal__pie{padding:calc(var(--u)*2)}
+  .pista-info__pop{max-width:min(260px,78vw)}
+  .hon-edit input.campo--min{width:110px}
+  .par dd .campo--min{max-width:100%}
+  .correo-cel{max-width:130px}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* ══ COMPUERTA — entrada con correo y contraseña ════════════════ */
+.compuerta{position:fixed;inset:0;z-index:80;display:grid;place-items:center;
+  background:var(--fondo);padding:calc(var(--u)*3)}
+.compuerta[hidden],.app[hidden]{display:none}
+.compuerta__caja{width:min(400px,100%);padding:calc(var(--u)*4);display:grid;gap:calc(var(--u)*2)}
+.compuerta__t{font-size:var(--t-xl);font-weight:600;letter-spacing:-.02em}
+.compuerta__s{font-size:var(--t-s);color:var(--tx-2);line-height:1.5;margin-top:4px}
+.compuerta label{display:grid;gap:6px;font-size:var(--t-xs);color:var(--tx-2);text-transform:uppercase;letter-spacing:.08em}
+.compuerta input{font-family:var(--fuente);font-size:var(--t-m);padding:calc(var(--u)*1.5);
+  border-radius:var(--r-m);border:1px solid var(--linea);background:var(--solido);color:var(--tx);text-transform:none;letter-spacing:0}
+.compuerta input:focus{outline:2px solid var(--acento);outline-offset:1px}
+.compuerta__b{width:100%;justify-content:center;padding:calc(var(--u)*1.5)}
+.compuerta__hoy{font-size:var(--t-s);line-height:1.55;color:var(--tx-2);
+  border-left:2px solid var(--acento);padding-left:calc(var(--u)*1.5);margin-top:calc(var(--u)*2)}
+.compuerta__hoy b{color:var(--tx);font-weight:600;font-variant-numeric:tabular-nums}
+.compuerta__err{font-size:var(--t-s);color:var(--riesgo);line-height:1.5;min-height:1.2em}
+.compuerta__pie{font-size:var(--t-xs);color:var(--tx-3);line-height:1.6;border-top:1px solid var(--linea);padding-top:calc(var(--u)*2)}
+.cuenta__salir{background:none;border:0;color:var(--tx-3);font:inherit;font-size:var(--t-xs);cursor:pointer;text-decoration:underline}
+
+/* ── Recibo: el movimiento que se acaba de registrar ──────── */
+.recibo{border:1px solid var(--ok);border-radius:var(--r-l);padding:calc(var(--u)*3);
+  background:color-mix(in srgb,var(--ok) 9%,transparent)}
+.recibo__r{font-size:var(--t-xs);letter-spacing:.09em;text-transform:uppercase;color:var(--ok);margin-bottom:calc(var(--u)*1.5)}
+.recibo__n{font-size:var(--n-2xl);font-weight:600;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}
+.recibo__q{font-size:var(--t-m);color:var(--tx-2);margin-top:8px}
+.recibo__l{display:flex;justify-content:space-between;gap:var(--u);font-size:var(--t-s);
+  padding:9px 0;border-bottom:1px solid var(--linea-suave)}
+.recibo__l:last-child{border-bottom:0}
+.recibo__l dt{color:var(--tx-3)}
+.recibo__l dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.recibo__dl{margin:calc(var(--u)*2.5) 0 0}
+
+/* Aviso que no se va solo: un fallo de guardado no puede desaparecer a los 3 s */
+.alarma{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--u)*3);z-index:90;
+  max-width:min(560px,calc(100% - var(--u)*4));display:flex;gap:calc(var(--u)*2);align-items:flex-start;
+  padding:calc(var(--u)*2) calc(var(--u)*2.5);border-radius:var(--r-l);
+  background:var(--solido);border:1px solid var(--riesgo);box-shadow:var(--sombra);
+  font-size:var(--t-s);line-height:1.5;color:var(--tx)}
+.alarma button{background:none;border:0;color:var(--tx-2);font:inherit;cursor:pointer;padding:0 2px}
+
+/* Selector de año gravable, en el logo */
+.logo__periodo{appearance:none;background:none;border:0;border-bottom:1px dashed var(--linea);
+  color:var(--acento);font:inherit;font-weight:600;cursor:pointer;padding:0 2px;margin-left:2px}
+.logo__periodo:focus{outline:none;border-bottom-color:var(--acento)}
+/* Select compacto para el responsable dentro de una ficha */
+select.campo--min{padding:5px 24px 5px 9px;font-size:var(--t-xs);border-radius:var(--r-s);width:auto;min-width:120px}
+.hon-edit{display:inline-flex;align-items:center;gap:6px}
+.hon-edit input.campo--min{width:130px;padding:5px 9px;font-size:var(--t-xs);border-radius:var(--r-s);font-variant-numeric:tabular-nums}
+/* Aviso de migración de la estructura anterior */
+/* Lista de chequeo dentro de un paso */
+.chequeo{display:flex;flex-direction:column;gap:2px;margin-bottom:calc(var(--u)*2)}
+.chequeo__i{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:var(--r-s);
+  font-size:var(--t-s);color:var(--tx-2);cursor:pointer;transition:background .15s var(--resorte)}
+.chequeo__i:hover{background:var(--vidrio-alto)}
+.chequeo__i input{width:16px;height:16px;accent-color:var(--acento);cursor:pointer;flex:none}
+.chequeo__i input:checked + span{color:var(--tx-3);text-decoration:line-through}
+.chequeo__fila{display:flex;align-items:center;gap:6px}
+.chequeo__fila .chequeo__i{flex:1}
+/* Marcador ⓘ con tooltip de guía */
+.pista-info{position:relative;flex:none;width:18px;height:18px;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;cursor:help;
+  font-size:11px;font-style:italic;font-weight:700;color:var(--tx-3);
+  border:1px solid var(--linea);background:var(--vidrio-alto)}
+.pista-info__pop{position:absolute;right:0;top:calc(100% + 6px);z-index:40;width:max-content;max-width:280px;
+  display:none;flex-direction:column;gap:6px;padding:calc(var(--u)*1.5) calc(var(--u)*2);
+  border-radius:var(--r-m);background:var(--solido);border:1px solid var(--linea);box-shadow:var(--sombra);
+  font-size:var(--t-xs);font-style:normal;font-weight:400;color:var(--tx-2);text-align:left;line-height:1.4}
+.pista-info:hover .pista-info__pop,.pista-info:focus .pista-info__pop{display:flex}
+.pista-info__l{display:flex;align-items:center;gap:8px}
+.pista-info__l i{width:12px;height:12px;border-radius:3px;flex:none}
+</style>
+</head>
+<body>
+
+<!-- ══ COMPUERTA ═══════════════════════════════════════════════ -->
+<div class="compuerta" id="compuerta" hidden>
+  <form class="compuerta__caja tarjeta-vidrio" id="fEntrar">
+    <div>
+      <div class="compuerta__t">Renta 2026</div>
+      <p class="compuerta__s">Consola de expedientes de CH S.A.S.</p>
+      <p class="compuerta__hoy" id="compuertaHoy"></p>
+    </div>
+    <label>Correo
+      <input type="email" id="inCorreo" autocomplete="username" required>
+    </label>
+    <label>Contraseña
+      <input type="password" id="inClave" autocomplete="current-password" required>
+    </label>
+    <p class="compuerta__err" id="errEntrar" role="alert"></p>
+    <button class="btn btn--fuerte compuerta__b" type="submit" id="btnEntrar">Entrar</button>
+    <p class="compuerta__pie">Las cuentas las crea un administrador. Si olvidaste la contraseña, pídele que la restablezca.</p>
+  </form>
+</div>
+
+<div class="app" id="app" hidden>
+  <nav class="lateral">
+    <div class="logo tarjeta-vidrio">
+      <div class="logo__t">Renta</div>
+      <div class="logo__s">CH S.A.S. · gravable
+        <select id="selPeriodo" class="logo__periodo" aria-label="Año gravable"></select>
+      </div>
+      <div class="logo__build" id="logoBuild" style="font-size:10px;opacity:.6;margin-top:4px"></div>
+    </div>
+    <div class="nav tarjeta-vidrio">
+      <div class="nav__rot">Seguimiento</div>
+      <button class="nav__b" data-vista="vencer"><span class="nav__ico">◷</span> Por vencer <span class="nav__n" id="cnVencer">0</span></button>
+      <button class="nav__b" data-vista="clientes"><span class="nav__ico">◫</span> Clientes <span class="nav__n" id="cnClientes">0</span></button>
+      <button class="nav__b" data-vista="cotizador"><span class="nav__ico">✎</span> Cotizador</button>
+      <div class="nav__rot">Dinero</div>
+      <button class="nav__b" data-vista="pagos"><span class="nav__ico">≡</span> Pagos <span class="nav__n" id="cnPagos">0</span></button>
+      <button class="nav__b" data-vista="bancos"><span class="nav__ico">⇄</span> Bancos <span class="nav__n" id="cnBancos">0</span></button>
+    </div>
+    <div class="lateral__pie tarjeta-vidrio">
+      <span class="cuenta" id="cuenta">—<br><button type="button" class="cuenta__salir" id="btnSalir">Salir</button></span>
+      <button class="btn btn--icono" id="btnTema" title="Cambiar tema" aria-label="Cambiar entre tema claro y oscuro">◐</button>
+    </div>
+  </nav>
+
+  <div class="principal">
+    <header class="cabecera tarjeta-vidrio">
+      <div id="cabeceraIzq">
+        <h1 class="cabecera__t" id="tituloVista">Rentas por vencer</h1>
+        <p class="cabecera__s" id="subVista">Ordenadas por cercanía al vencimiento.</p>
+      </div>
+      <div class="cabecera__acc" id="cabeceraAcc">
+        <button class="btn" id="btnImportar">↧ Importar del Sheet</button>
+      </div>
+    </header>
+
+    <div class="contenido">
+
+      <!-- ══ POR VENCER ══════════════════════════════════════ -->
+      <section class="vista" id="v-vencer">
+        <section class="cifras tarjeta-vidrio" aria-label="Resumen de la temporada">
+          <button class="cifra cifra--riesgo" data-atajo="vencer:estado:vencida"><b id="kVencidas">0</b><span>ya vencidas</span></button>
+          <button class="cifra cifra--riesgo" data-atajo="vencer:estado:esta semana"><b id="kSemana">0</b><span>vencen en 7 días</span></button>
+          <button class="cifra cifra--alerta" data-atajo="vencer:docs:faltan"><b id="kDocs">0</b><span>esperan papeles</span></button>
+          <button class="cifra cifra--ok" data-atajo="vencer:estado:presentada"><b id="kPres">0</b><span>presentadas</span></button>
+          <p class="cifras__nota" id="cifrasNota"></p>
+        </section>
+        <div class="linea tarjeta-vidrio">
+          <span class="linea__rot">Próximas 12 semanas</span>
+          <div class="linea__pista" id="pista"></div>
+          <div class="linea__llaves">
+            <span class="llave"><i style="background:var(--riesgo)"></i> vence pronto, sin presentar</span>
+            <span class="llave"><i style="background:var(--alerta)"></i> faltan documentos</span>
+            <span class="llave"><i style="background:var(--ok)"></i> presentada</span>
+            <span class="llave"><i style="background:var(--tx-3);opacity:.45"></i> en curso</span>
+          </div>
+          <p class="linea__pie">Toca una semana para dejar abajo solo los que vencen en ella. Tócala otra vez para ver todo.</p>
+        </div>
+        <div class="marco tarjeta-vidrio">
+          <div class="marco__barra"><span class="marco__cuenta" id="ctVencer"></span><button class="btn" data-limpiar="tVencer">Limpiar filtros</button></div>
+          <div class="etapas" id="etapasVencer" aria-label="Etapas visibles"></div>
+          <div class="desplaza"><table id="tVencer"></table></div>
+          <div class="nada" id="nVencer" hidden></div>
+        </div>
+      </section>
+
+      <!-- ══ CLIENTES ════════════════════════════════════════ -->
+      <section class="vista" id="v-clientes" hidden>
+        <div class="marco tarjeta-vidrio">
+          <div class="marco__barra"><span class="marco__cuenta" id="ctClientes"></span><button class="btn" data-limpiar="tClientes">Limpiar filtros</button></div>
+          <div class="etapas" id="etapasClientes" aria-label="Etapas visibles"></div>
+          <div class="desplaza"><table id="tClientes"></table></div>
+          <div class="nada" id="nClientes" hidden></div>
+        </div>
+      </section>
+
+      <!-- ══ COTIZADOR ═══════════════════════════════════════ -->
+      <section class="vista" id="v-cotizador" hidden>
+        <div class="cotz">
+          <form class="cotz__form tarjeta-vidrio" id="formCotz" autocomplete="off">
+            <label class="cotz__campo">Traer un cliente ya existente <span class="cotz__op">(opcional)</span>
+              <input class="campo" id="cotzBuscar" list="cotzClientes" placeholder="Escribe nombre o cédula para autorrellenar">
+              <datalist id="cotzClientes"></datalist>
+            </label>
+            <div class="cotz__grid">
+              <label class="cotz__campo">Nombre del cliente
+                <input class="campo" id="cotzNombre" required placeholder="Nombre y apellidos"></label>
+              <label class="cotz__campo">Cédula
+                <input class="campo" id="cotzCedula" inputmode="numeric" required placeholder="Sin puntos"></label>
+              <label class="cotz__campo">Correo <span class="cotz__op">(para enviar)</span>
+                <input class="campo" id="cotzCorreo" type="email" placeholder="correo@ejemplo.com"></label>
+              <label class="cotz__campo">Grupo <span class="cotz__op">(opcional)</span>
+                <input class="campo" id="cotzGrupo" placeholder="—"></label>
+              <label class="cotz__campo">Año gravable
+                <input class="campo" id="cotzAno" value="2025"></label>
+              <label class="cotz__campo">Valor cotizado
+                <input class="campo" id="cotzValor" inputmode="numeric" placeholder="$ 0"></label>
+            </div>
+            <div class="cotz__acc">
+              <button type="button" class="btn btn--fuerte" id="cotzAbrir">↗ Abrir cotizador del cliente</button>
+              <button type="button" class="btn" id="cotzCorreoBtn">✉ Enviar por correo</button>
+              <button type="button" class="btn" id="cotzCopiar">⧉ Copiar invitación</button>
+              <button type="submit" class="btn" id="cotzAgregar">↦ Agregar a la plataforma (paso Cotizó)</button>
+              <button type="button" class="btn" id="cotzLimpiar">Limpiar</button>
+            </div>
+            <p class="cotz__aviso" id="cotzAviso"></p>
+          </form>
+          <aside class="cotz__prev tarjeta-vidrio">
+            <div class="bloque__r">Invitación al cotizador</div>
+            <pre class="cotz__texto" id="cotzTexto"></pre>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ══ PAGOS ═══════════════════════════════════════════ -->
+      <section class="vista" id="v-pagos" hidden>
+        <div class="cuadros">
+          <div class="cuadro tarjeta-vidrio"><div class="cuadro__et">Honorarios facturados</div><div class="cuadro__n" id="kFact">—</div><div class="cuadro__pie">total del año</div></div>
+          <div class="cuadro cuadro--ok tarjeta-vidrio"><div class="cuadro__et">Recaudado</div><div class="cuadro__n" id="kRec">—</div><div class="cuadro__pie" id="kRecPct">—</div></div>
+          <button class="cuadro cuadro--riesgo cuadro--pulsable tarjeta-vidrio" data-atajo="pagos:sit:debe"><div class="cuadro__et">Por cobrar</div><div class="cuadro__n" id="kDeuda">—</div><div class="cuadro__pie" id="kDeudaN">—</div></button>
+        </div>
+        <div class="marco tarjeta-vidrio">
+          <div class="marco__barra"><span class="marco__cuenta" id="ctPagos"></span><button class="btn" data-limpiar="tPagos">Limpiar filtros</button></div>
+          <div class="desplaza"><table id="tPagos"></table></div>
+          <div class="nada" id="nPagos" hidden><div class="nada__t">Nada coincide</div><p>Ajusta los filtros de columna.</p><button class="btn" data-limpiar="tPagos">Limpiar filtros</button></div>
+        </div>
+      </section>
+
+      <!-- ══ BANCOS ══════════════════════════════════════════ -->
+      <section class="vista" id="v-bancos" hidden>
+        <div class="reparto" id="reparto"></div>
+        <div class="marco tarjeta-vidrio">
+          <div class="marco__barra">
+            <span class="marco__cuenta" id="ctBancos"></span>
+            <button class="btn btn--fuerte" id="btnNuevoMov">+ Nuevo movimiento</button>
+            <button class="btn" data-limpiar="tBancos">Limpiar filtros</button>
+          </div>
+          <div class="desplaza"><table id="tBancos"></table></div>
+          <div class="nada" id="nBancos" hidden>
+            <div class="nada__t">Sin movimientos</div>
+            <p>Cada pago que reciba cualquiera de los tres se registra aquí, y de ahí sale el reparto.</p>
+            <button class="btn btn--fuerte" id="btnNuevoMov2">+ Nuevo movimiento</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ CLIENTE (página propia) ═════════════════════════ -->
+      <section class="vista" id="v-cliente" hidden></section>
+
+    </div>
+  </div>
+</div>
+
+<div class="brindis" id="brindis" role="status" aria-live="polite"></div>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal__caja" role="dialog" aria-modal="true" aria-labelledby="modalT">
+    <div class="modal__cab">
+      <div class="modal__t" id="modalT">Importar clientes desde el Sheet</div>
+      <button class="btn btn--icono" id="btnCerrarModal" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal__cu">
+      <ol class="pasos-imp">
+        <li>Abre la pestaña <code>elaborar</code> del Sheet.</li>
+        <li>Selecciona <b>desde la fila de encabezados</b> —la que dice CÉDULA, NOMBRE, CORREO…— hasta la última fila, y copia con <kbd>Ctrl</kbd>+<kbd>C</kbd>.</li>
+        <li>Pega aquí. Las columnas se reconocen por su nombre, así que da igual cuáles copies mientras vengan los títulos.</li>
+      </ol>
+      <p class="sinnota" style="margin-bottom:12px">Lo que se cobra sale de <code>PRECIO ACORDADO</code>. Las claves de la DIAN y las columnas PRESENTADO y PAGADO no se traen.</p>
+      <textarea class="pegar" id="pegar" placeholder="Pega aquí lo copiado del Sheet…" aria-label="Contenido copiado del Sheet"></textarea>
+      <p class="sinnota" style="margin-top:12px">¿Pegaste la hoja <code>RESPUESTAS</code>? Pulsa <b>«Actualizar desde RESPUESTAS»</b>: ajusta los papeles de cada cliente según lo que respondió y, si eres admin, corrige el honorario con el <b>Precio Neto</b>. No toca el paso ni los comentarios.</p>
+    </div>
+    <div class="modal__pie">
+      <span class="aviso" id="avisoImp">El paso, los documentos y los comentarios no se pisan al reimportar.</span>
+      <button class="btn" id="btnDemo">Datos de muestra</button>
+      <button class="btn" id="btnDocsResp">Actualizar desde RESPUESTAS</button>
+      <button class="btn btn--fuerte" id="btnHacerImp">Importar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ NUEVO MOVIMIENTO ════════════════════════════════════════ -->
+<div class="modal" id="modalMov" hidden>
+  <div class="modal__caja" role="dialog" aria-modal="true" aria-labelledby="movT">
+    <div class="modal__cab">
+      <div class="modal__t" id="movT">Nuevo movimiento</div>
+      <button class="btn btn--icono" id="btnCerrarMov" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal__cu">
+      <form class="form-mov" id="formMov">
+        <div><label for="mFecha">Fecha</label><input class="campo" type="date" id="mFecha" required></div>
+        <div><label for="mMonto">Monto</label><input class="campo" id="mMonto" inputmode="numeric" placeholder="0" required></div>
+        <div><label for="mQuien">Recibido por</label><select class="campo" id="mQuien"></select></div>
+        <div><label for="mMedio">Medio</label><select class="campo" id="mMedio"></select></div>
+        <div style="grid-column:1/-1"><label for="mCliente">Cliente</label><select class="campo" id="mCliente"></select></div>
+        <div style="grid-column:1/-1"><label for="mNota">Referencia</label><input class="campo" id="mNota" placeholder="opcional: número de transferencia, «abono 1 de 2»…"></div>
+      </form>
+      <div id="recibo" hidden></div>
+    </div>
+    <div class="modal__pie">
+      <span class="aviso" id="avisoMov">Queda sin conciliar hasta que lo marques en la tabla.</span>
+      <button class="btn" id="btnOtroMov" hidden>Registrar otro</button>
+      <button class="btn btn--fuerte" id="btnListoMov" hidden>Listo</button>
+      <button class="btn btn--fuerte" id="btnGuardarMov" type="submit" form="formMov">Registrar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ══════════════════════════════════════════════════════════════
+   CONFIGURACIÓN  →  espejo de /config/general en Firestore
+   ══════════════════════════════════════════════════════════════ */
+
+const PASOS = ['Invitado','Cotizó','Documentos','Elaboración','Presentado','Pagado'];
+
+// Listas de chequeo por paso: tareas internas que hay que cumplir en esa
+// etapa. Hoy solo el paso «Documentos» tiene una. Se guardan por cliente
+// en c.tareas (territorio de la plataforma).
+const CHECKLIST_PASO = {
+  [PASOS.indexOf('Documentos')+1]: [
+    'Colorear reporte',
+    'Tomar pantallazos',
+    'Verificar documentos contra reporte',
+    'Verificar documentos contra pantallazos',
+    'Solicitar documentos faltantes (si aplica)'
+  ],
+  [PASOS.indexOf('Elaboración')+1]: [
+    'Ingresar papeles al ayuda renta',
+    'Verificar valores contra reporte'
+  ]
+};
+
+// Guía de colores para «Colorear reporte» (se muestra como tooltip).
+const GUIA_COLORES = [
+  {color:'#22c55e', et:'Verde — saldos de bancos (deudas, ahorros o CDT)'},
+  {color:'#eab308', et:'Amarillo — ingresos (intereses, salarios, honorarios…)'},
+  {color:'#a855f7', et:'Morado — patrimonio (activos y todo lo relacionado)'},
+  {color:'#3b82f6', et:'Azul — retenciones'}
+];
+// Tareas que llevan una guía/tooltip al lado.
+const TAREA_GUIA = { 'Colorear reporte': GUIA_COLORES };
+/* ── Documentos según las respuestas del cliente (hoja RESPUESTAS) ──
+   El cotizador guarda una fila por cliente con columnas «Sí/No». De ahí
+   sale la lista de papeles de cada quien, en vez de darle las mismas seis
+   a todos. El mapeo lo confirmó el equipo; se ajusta aquí sin desplegar
+   nada más. */
+const DOCS_UNIVERSALES = ['Cédula','RUT','Clave de la DIAN actualizada'];
+const REGLAS_DOC = [
+  {col:'Salario',                        doc:'Certificado de ingresos y retenciones (laboral)'},
+  {col:'Pensión',                        doc:'Certificado de pensión'},
+  {col:'Honorarios',                     doc:'Certificado de honorarios y retenciones'},
+  {col:'Arriendos',                      doc:'Certificados de arrendamientos recibidos'},
+  {col:'Dividendos',                     doc:'Certificado de dividendos'},
+  {col:'Rendimientos financieros (CDT)', doc:'Certificados bancarios / de rendimientos (CDT)'},
+  {col:'Exterior (ingresos)',            doc:'Soportes de ingresos del exterior'},
+  {col:'Inversiones Nacionales',         doc:'Certificados de inversiones (acciones, fondos)'},
+  {col:'Activos Exterior',               doc:'Declaración de activos en el exterior + soportes'},
+  {col:'Dependientes',                   doc:'Certificado / documentos de dependientes'},
+  {col:'Crédito Hipotecario',            doc:'Certificado de intereses de crédito hipotecario'},
+  {col:'Aportes AFC',                    doc:'Certificado de aportes AFC/AVC'},
+  {col:'Vehículo Híbrido/Eléctrico',     doc:'Soporte de vehículo híbrido/eléctrico'},
+  {col:'Ganancias Ocasionales',          doc:'Soportes de ganancias ocasionales (venta de bienes)'}
+];
+const REGLA_ACTIVOS = {col:'Cantidad Activos', doc:'Relación de bienes (predial, vehículos)'};
+
+// Categorías que nacen con ítems concretos en vez de un genérico suelto.
+const SUBDOCS = {
+  'Clave de la DIAN actualizada': [
+    'Descarga del reporte',
+    'Descarga de renta sugerida',
+    'Descarga de facturas electrónicas'
+  ]
+};
+
+// Expande una lista de categorías a documentos: si la categoría tiene
+// subdocumentos definidos, crea uno por cada uno; si no, un genérico.
+function docsDeCats(cats){
+  const out = [];
+  for(const cat of cats){
+    const subs = SUBDOCS[cat];
+    if(subs) subs.forEach(nombre=> out.push({id:idNuevo('d'), categoria:cat, nombre, recibido:0, nota:''}));
+    else out.push({id:idNuevo('d'), categoria:cat, nombre:'', recibido:0, nota:''});
+  }
+  return out;
+}
+
+// Orden canónico para pintar las categorías del expediente, y lista maestra.
+const ORDEN_CAT  = [...DOCS_UNIVERSALES, ...REGLAS_DOC.map(r=>r.doc), REGLA_ACTIVOS.doc];
+const CATEGORIAS = ORDEN_CAT;
+
+// La celda dice «sí»: el cotizador escribe «Sí»/«No» (normEnc quita el acento).
+const esSi = v => /^s[ií]\b/.test(normEnc(v));
+// Activos: «Menos de 5» / «Entre 5 y 15» / «Más de 15» / vacío.
+const tieneActivos = v => { const t = normEnc(v); return !!t && !/^0$|ningun|^no\b/.test(t); };
+
+// Categorías que aplican, dado un lector get(nombreColumna) de una fila.
+function catsSegunRespuestas(get){
+  const cats = [...DOCS_UNIVERSALES];
+  for(const r of REGLAS_DOC){ if(esSi(get(r.col))) cats.push(r.doc); }
+  if(tieneActivos(get(REGLA_ACTIVOS.col))) cats.push(REGLA_ACTIVOS.doc);
+  return cats;
+}
+
+// Categorías presentes en el expediente de un cliente, en orden canónico.
+const catsDe = c => [...new Set(c.documentos.map(d=>d.categoria))]
+  .sort((a,b)=>{ const ia=ORDEN_CAT.indexOf(a), ib=ORDEN_CAT.indexOf(b);
+                 return (ia<0?999:ia)-(ib<0?999:ib); });
+const PERSONAS = ['Johanna','Leidy','John'];
+const MEDIOS   = ['Bancolombia','Davivienda','Nequi','Daviplata','Efectivo'];
+
+// Johanna y Leidy van como bolsa común: no está definido cómo se divide ese 70%.
+const REPARTO = [
+  {id:'JL',   nombre:'Johanna + Leidy', cuota:0.70, personas:['Johanna','Leidy']},
+  {id:'JOHN', nombre:'John',            cuota:0.30, personas:['John']}
+];
+
+// Vencimiento por los DOS últimos dígitos de la cédula.
+// Tomado del Calendario Tributario 2026 — Renta Personas Naturales.
+// El "00" se trata como 100 (ver venceDe), por eso el último tramo va 99..100.
+// Solo se usa cuando la columna F del Sheet viene vacía.
+const CALENDARIO_DIAN = [
+  {desde:1,  hasta:2,  fecha:'2026-08-12'}, {desde:3,  hasta:4,  fecha:'2026-08-13'},
+  {desde:5,  hasta:6,  fecha:'2026-08-14'}, {desde:7,  hasta:8,  fecha:'2026-08-18'},
+  {desde:9,  hasta:10, fecha:'2026-08-19'}, {desde:11, hasta:12, fecha:'2026-08-20'},
+  {desde:13, hasta:14, fecha:'2026-08-21'}, {desde:15, hasta:16, fecha:'2026-08-24'},
+  {desde:17, hasta:18, fecha:'2026-08-25'}, {desde:19, hasta:20, fecha:'2026-08-26'},
+  {desde:21, hasta:22, fecha:'2026-08-27'}, {desde:23, hasta:24, fecha:'2026-08-28'},
+  {desde:25, hasta:26, fecha:'2026-08-31'},
+
+  {desde:27, hasta:28, fecha:'2026-09-01'}, {desde:29, hasta:30, fecha:'2026-09-02'},
+  {desde:31, hasta:32, fecha:'2026-09-03'}, {desde:33, hasta:34, fecha:'2026-09-04'},
+  {desde:35, hasta:36, fecha:'2026-09-07'}, {desde:37, hasta:38, fecha:'2026-09-08'},
+  {desde:39, hasta:40, fecha:'2026-09-09'}, {desde:41, hasta:42, fecha:'2026-09-10'},
+  {desde:43, hasta:44, fecha:'2026-09-11'}, {desde:45, hasta:46, fecha:'2026-09-14'},
+  {desde:47, hasta:48, fecha:'2026-09-15'}, {desde:49, hasta:50, fecha:'2026-09-16'},
+  {desde:51, hasta:52, fecha:'2026-09-17'}, {desde:53, hasta:54, fecha:'2026-09-18'},
+  {desde:55, hasta:56, fecha:'2026-09-21'}, {desde:57, hasta:58, fecha:'2026-09-22'},
+  {desde:59, hasta:60, fecha:'2026-09-23'}, {desde:61, hasta:62, fecha:'2026-09-24'},
+  {desde:63, hasta:64, fecha:'2026-09-25'}, {desde:65, hasta:66, fecha:'2026-09-28'},
+
+  {desde:67, hasta:68, fecha:'2026-10-01'}, {desde:69, hasta:70, fecha:'2026-10-02'},
+  {desde:71, hasta:72, fecha:'2026-10-05'}, {desde:73, hasta:74, fecha:'2026-10-06'},
+  {desde:75, hasta:76, fecha:'2026-10-07'}, {desde:77, hasta:78, fecha:'2026-10-08'},
+  {desde:79, hasta:80, fecha:'2026-10-09'}, {desde:81, hasta:82, fecha:'2026-10-13'},
+  {desde:83, hasta:84, fecha:'2026-10-14'}, {desde:85, hasta:86, fecha:'2026-10-15'},
+  {desde:87, hasta:88, fecha:'2026-10-16'}, {desde:89, hasta:90, fecha:'2026-10-19'},
+  {desde:91, hasta:92, fecha:'2026-10-20'}, {desde:93, hasta:94, fecha:'2026-10-21'},
+  {desde:95, hasta:96, fecha:'2026-10-22'}, {desde:97, hasta:98, fecha:'2026-10-23'},
+  {desde:99, hasta:100,fecha:'2026-10-26'}
+];
+
+/* ══════════════════════════════════════════════════════════════
+   ESTADO — la forma es la de Firestore (ver ARQUITECTURA.md)
+
+   cliente = {
+     cedula,
+     sheet:      {nombre, correo, vence, honorarios, grupo},   ← dueño: el Sheet
+     paso:       1..6,
+     noObligado: bool,   ← aceptó, pero por topes no tiene que declarar
+     documentos: [{id, categoria, nombre, recibido, nota}],
+     hitos:      {n: {fecha}},
+     notas:      [{id, texto, paso|null, origen, autor, creado}]
+   }
+   ══════════════════════════════════════════════════════════════ */
+
+const LLAVE = 'renta2026';
+let CLIENTES = [], MOVS = [];
+
+// NUBE = true cuando estamos hablando con Firestore. Si es false la consola
+// funciona igual pero contra localStorage, que es lo que ve una sola persona.
+let NUBE = false, USUARIO = null, PERFIL = null, db = null, auth = null;
+
+/* ══════════════════════════════════════════════════════════════
+   UTILIDADES
+   ══════════════════════════════════════════════════════════════ */
+
+const $  = (s,r=document)=>r.querySelector(s);
+const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
+const HOY = new Date(); HOY.setHours(0,0,0,0);
+const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pesos = n => (n===null||n===undefined||n==='') ? '—' : '$'+Math.round(n).toLocaleString('es-CO');
+const idNuevo = p => p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+
+function aDate(iso){ if(!iso) return null; const [a,m,d]=String(iso).split('-').map(Number); return (a&&m&&d)?new Date(a,m-1,d):null; }
+function fCorta(iso){ const f=aDate(iso); return f?`${String(f.getDate()).padStart(2,'0')} ${MESES[f.getMonth()]}`:'—'; }
+function fLarga(iso){ const f=aDate(iso); return f?`${String(f.getDate()).padStart(2,'0')}/${String(f.getMonth()+1).padStart(2,'0')}/${f.getFullYear()}`:'—'; }
+function diasA(iso){ const f=aDate(iso); return f?Math.round((f-HOY)/86400000):9999; }
+function hoyISO(){ return `${HOY.getFullYear()}-${String(HOY.getMonth()+1).padStart(2,'0')}-${String(HOY.getDate()).padStart(2,'0')}`; }
+
+function normFecha(v){
+  const s = String(v||'').trim(); if(!s) return '';
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+  if(m){ let a=m[3]; if(a.length===2) a='20'+a; return `${a}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; }
+  // La hoja escribe "12-ago-26" y "1-sept-26": mes abreviado y año de dos cifras.
+  m = s.toLowerCase().match(/(\d{1,2}).*?(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic).*?(\d{2,4})/);
+  if(m){ let a=m[3]; if(a.length===2) a='20'+a;
+    return `${a}-${String(MESES.indexOf(m[2])+1).padStart(2,'0')}-${m[1].padStart(2,'0')}`; }
+  return '';
+}
+const normNumero = v => { const n=String(v||'').replace(/[^\d]/g,''); return n?Number(n):0; };
+
+/* ── Documentos: una categoría se completa cuando todos sus ítems llegaron ── */
+const itemsDe   = (c,cat) => c.documentos.filter(d=>d.categoria===cat);
+const catCompleta = (c,cat) => { const i=itemsDe(c,cat); return i.length>0 && i.every(d=>d.recibido); };
+const catsFaltantes = c => catsDe(c).filter(cat=>!catCompleta(c,cat));
+// Un cliente recién importado, sin respuestas todavía, arranca solo con los
+// documentos que necesita todo el mundo. Los demás los siembra RESPUESTAS.
+const docsNuevos = () => docsDeCats(DOCS_UNIVERSALES);
+
+// «01–02», la pareja de dígitos de un tramo del calendario.
+const parDigitos = t => `${String(t.desde).padStart(2,'0')}–${String(t.hasta%100).padStart(2,'0')}`;
+
+function venceDe(c){
+  if(c.sheet.vence) return c.sheet.vence;
+  const dd = Number(String(c.cedula).slice(-2));
+  const n = (!dd||isNaN(dd)) ? 100 : dd;
+  return (CALENDARIO_DIAN.find(x=>n>=x.desde&&n<=x.hasta)||CALENDARIO_DIAN[0]).fecha;
+}
+const pagadoDe = ced => MOVS.filter(m=>m.cedula===ced).reduce((s,m)=>s+m.monto,0);
+
+/* Solo se le hace seguimiento de vencimiento a quien aceptó la cotización:
+   a los demás no les vamos a presentar nada, y llenaban el tablero de
+   plazos que no son nuestros. El estado lo pone el Sheet; el paso lo pone
+   la plataforma, así que basta con que uno de los dos diga que sí — si el
+   equipo ya movió a alguien de «Invitado», ese cliente cuenta aunque el
+   Sheet se haya quedado atrás. Siguen todos en la vista Clientes.
+
+   `noObligado` manda sobre todo lo demás: pasa a menudo que alguien acepta la
+   cotización y al revisar los topes resulta que no tiene que declarar. Ese
+   cliente ya no tiene plazo, y dejarlo en el tablero lo pintaba en rojo como
+   vencido para siempre. Sale de vencimientos y sigue entero en Clientes. */
+const enTemporada = c => !c.noObligado && (c.paso >= 2 || /acept/i.test(c.sheet.estado||''));
+
+// Honorarios que se cobran. Por defecto los del Sheet (PRECIO ACORDADO),
+// pero la plataforma puede fijar un valor propio —incluido $0 para un
+// cliente regalado— que gana y no se pisa al reimportar ni desde RESPUESTAS.
+const honorariosDe = c => (c.honorarioManual!=null) ? c.honorarioManual : (c.sheet.honorarios||0);
+
+// Cuando el expediente todavía no se ha traído de la nube usamos el resumen
+// desnormalizado que viaja en el propio documento del cliente (ARQUITECTURA §2).
+function conteoDocs(c){
+  if(c._cargado || !NUBE) return {
+    falta: catsFaltantes(c).length,
+    docsTotal: c.documentos.length,
+    docsRecibidos: c.documentos.filter(x=>x.recibido).length
+  };
+  const r = c.resumen || {};
+  return {
+    falta: r.docsCompletos ? 0 : Math.max(0, (r.docsTotal||0) - (r.docsRecibidos||0)),
+    docsTotal: r.docsTotal || 0,
+    docsRecibidos: r.docsRecibidos || 0
+  };
+}
+
+function resumen(c){
+  const vence = venceDe(c), d = diasA(vence);
+  const pag = pagadoDe(c.cedula);
+  const noOb = !!c.noObligado;
+  const cd = conteoDocs(c);
+  return {
+    vence, dias:d, noObligado:noOb,
+    ...cd,
+    // A quien no está obligado no hay que reclamarle papeles: sus documentos
+    // dejan de contar como faltantes en los tableros.
+    falta: noOb ? 0 : cd.falta,
+    pagado: pag,
+    saldo: Math.max(0,honorariosDe(c)-pag),
+    presentado: c.paso>=5,
+    // Sin obligación no hay plazo que vencer: no puede salir en rojo ni sumar
+    // a «ya vencidas» ni a «vencen en 7 días».
+    vencida: !noOb && c.paso<5 && d<0,
+    proxima: !noOb && c.paso<5 && d>=0 && d<=7,
+    riesgo:  !noOb && c.paso<5 && d<=7
+  };
+}
+
+// Devuelve una promesa con {ok, n} para quien necesite saber si de
+// verdad quedó guardado. La mayoría de las llamadas la ignoran.
+function guardar(){
+  if(NUBE) return guardarNube();
+  try{ localStorage.setItem(LLAVE, JSON.stringify({v:2,CLIENTES,MOVS})); }catch(e){}
+  return Promise.resolve({ok:true, n:0});
+}
+function cargar(){
+  try{
+    const g = JSON.parse(localStorage.getItem(LLAVE)||'null');
+    if(!g || !Array.isArray(g.CLIENTES) || !g.CLIENTES.length) return false;
+    MOVS = g.MOVS || [];
+    CLIENTES = g.v===2 ? g.CLIENTES : g.CLIENTES.map(migrar);
+    return true;
+  }catch(e){ return false; }
+}
+// Convierte el formato plano anterior al modelo de Firestore
+function migrar(v){
+  const docs = docsNuevos();
+  (v.docs||[]).forEach((r,i)=>{ if(docs[i]) docs[i].recibido = r?1:0; });
+  return {
+    cedula: v.cedula,
+    sheet: {nombre:v.nombre||'', correo:v.correo||'', vence:v.vence||'', honorarios:v.honorarios||0, grupo:v.grupo||''},
+    paso: v.paso||1,
+    documentos: docs,
+    hitos: {},
+    notas: (v.notas||[]).map(n=>({id:idNuevo('n'), texto:n.texto, paso:null, origen:n.de==='cliente'?'cliente':'equipo', autor:n.de, creado:n.fecha}))
+  };
+}
+
+/* ── Aviso flotante ───────────────────────────────────────── */
+let relojBrindis;
+function brindis(texto, deshacer){
+  const b = $('#brindis');
+  b.innerHTML = esc(texto) + (deshacer?' <button id="bDesh">Deshacer</button>':'');
+  b.dataset.on = '1';
+  // Deshacer devuelve el dato a memoria; hay que persistirlo (pintar ya no lo hace).
+  if(deshacer) $('#bDesh').onclick = ()=>{ deshacer(); guardar(); b.dataset.on='0'; enrutar(); };
+  clearTimeout(relojBrindis);
+  relojBrindis = setTimeout(()=>{ b.dataset.on='0'; }, deshacer?7000:3200);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MOTOR DE TABLAS — cada columna filtra y ordena
+   ══════════════════════════════════════════════════════════════ */
+
+const filtros = {}, ordenes = {};
+
+/* ── Etapas visibles ──────────────────────────────────────────
+   El filtro de la columna «Paso» deja ver UNA etapa. Esto es lo
+   contrario y es lo que se pidió: apagar las que no interesan y
+   quedarse con el resto. Se recuerda entre sesiones, porque cada
+   quien mira siempre las mismas. Se aplica a Por vencer y a
+   Clientes, que son las dos listas que tienen paso. */
+const etapasOcultas = new Set();
+try{ JSON.parse(localStorage.getItem(LLAVE+':etapas')||'[]').forEach(n=>etapasOcultas.add(Number(n))); }catch(_){}
+const guardarEtapas = ()=> localStorage.setItem(LLAVE+':etapas', JSON.stringify([...etapasOcultas]));
+const etapaVisible  = c => !etapasOcultas.has(c.paso);
+const notaEtapas    = () => etapasOcultas.size
+  ? ` · ${etapasOcultas.size} etapa${etapasOcultas.size>1?'s':''} oculta${etapasOcultas.size>1?'s':''}` : '';
+
+function pintarEtapas(id){
+  const cont = $('#'+id); if(!cont) return;
+  cont.innerHTML = '<span class="etapas__r">Etapas</span>' + PASOS.map((p,i)=>{
+    const on = !etapasOcultas.has(i+1);
+    return `<button class="etq" data-etapa="${i+1}" aria-pressed="${on}"
+      title="${on?'Ocultar':'Mostrar'} ${esc(p)}">${esc(p)}</button>`;
+  }).join('') + (etapasOcultas.size
+    ? '<button class="etq etq--todas" data-etapa="todas" aria-pressed="false">Ver todas</button>' : '');
+}
+
+function Tabla(id, cols, datos, opts={}){
+  filtros[id] = filtros[id] || {};
+  ordenes[id] = ordenes[id] || opts.orden || null;
+
+  let filas = datos.filter(d => cols.every(col=>{
+    const f = filtros[id][col.clave];
+    if(!f) return true;
+    const v = col.valor(d);
+    return col.tipo==='opciones' ? String(v)===f : String(v??'').toLowerCase().includes(f.toLowerCase());
+  }));
+
+  const o = ordenes[id];
+  if(o){
+    const col = cols.find(c=>c.clave===o.clave);
+    if(col) filas.sort((a,b)=>{
+      const va = col.ordenValor?col.ordenValor(a):col.valor(a), vb = col.ordenValor?col.ordenValor(b):col.valor(b);
+      const r = (typeof va==='number'&&typeof vb==='number') ? va-vb : String(va).localeCompare(String(vb),'es');
+      return o.dir==='desc' ? -r : r;
+    });
+  }
+
+  const th = cols.map(c=>{
+    const act = o&&o.clave===c.clave;
+    return `<th class="${c.num?'num':''}" data-orden="${c.clave}" title="Ordenar por ${esc(c.et)}">${esc(c.et)}${act?`<span class="orden">${o.dir==='asc'?'▲':'▼'}</span>`:''}</th>`;
+  }).join('');
+
+  const tf = cols.map(c=>{
+    const v = filtros[id][c.clave]||'', on = v?' data-activo="1"':'';
+    if(c.tipo==='opciones'){
+      const ops = (typeof c.opciones==='function'?c.opciones(datos):c.opciones)||[];
+      return `<td><select class="campo"${on} data-filtro="${c.clave}" aria-label="Filtrar ${esc(c.et)}"><option value="">todas</option>${
+        ops.map(x=>`<option value="${esc(x)}"${v===String(x)?' selected':''}>${esc(x)}</option>`).join('')}</select></td>`;
+    }
+    return `<td><input class="campo"${on} data-filtro="${c.clave}" value="${esc(v)}" placeholder="${esc(c.pista||'filtrar')}" aria-label="Filtrar ${esc(c.et)}"></td>`;
+  }).join('');
+
+  const tb = filas.map(d=>{
+    const clic = opts.alClic ? ` class="clic" data-fila="${esc(opts.id(d))}" tabindex="0"` : '';
+    return `<tr${clic}>${cols.map(c=>`<td class="${c.num?'num':''}">${c.pinta(d)}</td>`).join('')}</tr>`;
+  }).join('');
+
+  const t = $('#'+id);
+  t.innerHTML = `<thead><tr>${th}</tr><tr class="filtros">${tf}</tr></thead><tbody>${tb}</tbody>`;
+
+  t.oninput = e=>{
+    const el = e.target.closest('[data-filtro]'); if(!el) return;
+    const clave = el.dataset.filtro, pos = el.selectionStart;
+    filtros[id][clave] = el.value;
+    opts.repintar();
+    const nuevo = $(`#${id} [data-filtro="${clave}"]`);
+    if(nuevo){ nuevo.focus(); if(nuevo.setSelectionRange && el.tagName==='INPUT') nuevo.setSelectionRange(pos,pos); }
+  };
+  t.onclick = e=>{
+    if(e.target.closest('[data-accion]')) return;
+    const h = e.target.closest('[data-orden]');
+    if(h){
+      const k = h.dataset.orden;
+      ordenes[id] = (o&&o.clave===k) ? {clave:k,dir:o.dir==='asc'?'desc':'asc'} : {clave:k,dir:'asc'};
+      opts.repintar(); return;
+    }
+    const fila = e.target.closest('[data-fila]');
+    if(fila && opts.alClic) opts.alClic(fila.dataset.fila);
+  };
+  t.onkeydown = e=>{
+    if(e.key!=='Enter') return;
+    const fila = e.target.closest('[data-fila]');
+    if(fila && opts.alClic){ e.preventDefault(); opts.alClic(fila.dataset.fila); }
+  };
+  return filas.length;
+}
+
+/* ── Celdas ───────────────────────────────────────────────── */
+const TONO_PASO = ['','curso','alerta','curso','ok','ok'];
+const celCliente = c => `<div class="nom">${esc(c.sheet.nombre)}</div><div class="sub">${esc(c.cedula)}${c.sheet.grupo?' · grupo '+esc(c.sheet.grupo):''}</div>`;
+// El paso se sigue viendo aunque no esté obligado: dice hasta dónde se llegó
+// antes de saberlo, y quien lo marcó puede querer devolverlo.
+const celPaso    = c => `<span class="pastilla ${TONO_PASO[c.paso-1]?'pastilla--'+TONO_PASO[c.paso-1]:''}">${esc(PASOS[c.paso-1]||'—')}</span>`
+  + (c.noObligado ? ' <span class="pastilla">no obligado</span>' : '');
+const celDocs    = r => r.noObligado ? `<span class="dato">no aplica</span>`
+  : r.falta ? `<span class="dato dato--alerta">faltan ${r.falta}</span>` : `<span class="dato dato--ok">completos</span>`;
+function celVence(r){
+  if(r.noObligado) return `<span class="dato">no aplica</span>`;
+  if(r.vencida) return `<span class="dato dato--riesgo">${fCorta(r.vence)} · vencida</span>`;
+  if(r.proxima) return `<span class="dato dato--riesgo">${fCorta(r.vence)} · ${r.dias}d</span>`;
+  if(r.presentado) return `<span class="dato">${fCorta(r.vence)}</span>`;
+  return `<span class="dato">${fCorta(r.vence)} · ${r.dias}d</span>`;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   RUTAS — el expediente es una página, no un cajón
+   ══════════════════════════════════════════════════════════════ */
+
+const TITULOS = {
+  vencer:   ['Rentas por vencer','Solo los clientes que aceptaron la cotización. Toca una fila para abrir el expediente.'],
+  clientes: ['Clientes','Qué tiene y qué le falta a cada uno. Filtra por cualquier columna.'],
+  cotizador:['Cotizador','Envía a un cliente el cotizador en línea, o agrégalo directo a la plataforma en el paso Cotizó.'],
+  pagos:    ['Estado de pagos','Honorarios, abonos recibidos y saldo por cobrar.'],
+  bancos:   ['Bancos y conciliación','Movimientos recibidos y reparto entre los tres.']
+};
+const TABLA_DE = {vencer:'tVencer', clientes:'tClientes', pagos:'tPagos', bancos:'tBancos'};
+let vistaActual = 'vencer', cedulaActual = null, refrescoPendiente = false, refrescoVigilado = null;
+/* Semana escogida en el calendario de «Por vencer» (0 = esta semana).
+   `null` = ninguna, la tabla muestra todas. No se recuerda entre sesiones:
+   es una mirada de un momento, no una preferencia. */
+let semanaSel = null;
+
+const irA       = v   => { location.hash = '#/'+v; };
+const irACliente = ced => { location.hash = '#/cliente/'+ced; };
+
+/* Refresca la vista actual por un cambio de DATOS (snapshot de Firestore),
+   NO por navegación: repinta en el mismo sitio, conserva el scroll y no salta.
+   Navegar (cambiar de #hash) sigue yendo por enrutar(), que sí lleva arriba. */
+function refrescar(){
+  // Si estás escribiendo (un comentario a medio redactar, un filtro…), no se
+  // repinta ahora: te borraría el texto y movería el cursor. Se hace en cuanto
+  // sueltes el campo.
+  const a = document.activeElement;
+  if(a && (a.tagName==='TEXTAREA' || a.tagName==='INPUT') && a.closest('.vista')){
+    refrescoPendiente = true;
+    // El `blur` se engancha por CAMPO. Antes bastaba con que el campo vigilado
+    // desapareciera del DOM antes de perder el foco (un repintado, cerrar el
+    // expediente) para que ese `blur` no llegara nunca: `refrescoPendiente` se
+    // quedaba en true, el `if` de arriba impedía enganchar otro y la pantalla
+    // dejaba de actualizarse hasta recargar la página.
+    if(refrescoVigilado !== a){
+      refrescoVigilado = a;
+      a.addEventListener('blur', ()=>{
+        refrescoVigilado = null;
+        if(refrescoPendiente){ refrescoPendiente = false; refrescar(); }
+      }, {once:true});
+    }
+    return;
+  }
+  refrescoPendiente = false; refrescoVigilado = null;
+  const y = window.scrollY;
+  if(vistaActual==='cliente'){
+    const c = CLIENTES.find(x=>x.cedula===cedulaActual);
+    if(!c){ enrutar(); return; }   // el cliente ya no está: navega normal
+    // Red de seguridad: el expediente se trae al llegar (enrutar), pero si por
+    // lo que sea el objeto vigente no lo tiene, se pide aquí en vez de dejar la
+    // sección de documentos vacía hasta que recargues la página.
+    if(NUBE && !c._cargado) cargarExpediente(c);
+    pintarCliente(c);
+  } else {
+    pintar();
+  }
+  window.scrollTo(0, y);   // vuelve a donde estabas: sin saltos
+}
+
+function enrutar(){
+  const partes = (location.hash||'#/vencer').replace(/^#\/?/,'').split('/');
+  if(partes[0]==='cliente' && partes[1]){
+    const c = CLIENTES.find(x=>x.cedula===partes[1]);
+    if(c){
+      vistaActual='cliente'; cedulaActual=c.cedula;
+      if(NUBE) cargarExpediente(c);   // repinta solo al llegar
+      mostrar('cliente'); pintarCliente(c); return;
+    }
+  }
+  const v = TITULOS[partes[0]] ? partes[0] : 'vencer';
+  vistaActual = v; cedulaActual = null;
+  mostrar(v);
+  $('#tituloVista').textContent = TITULOS[v][0];
+  $('#subVista').textContent = TITULOS[v][1];
+  $('#cabeceraAcc').innerHTML = '<button class="btn" id="btnImportar">↧ Importar del Sheet</button>';
+  const bImp = $('#btnImportar');
+  bImp.onclick = abrirModal;
+  // Importar toca `sheet`, que solo el admin puede escribir. Se decide AQUÍ y no
+  // una sola vez al entrar: la cabecera se reconstruye en cada navegación, así
+  // que el `hidden` puesto al iniciar sesión se perdía en el primer cambio de
+  // vista y el botón reaparecía para un operador.
+  bImp.hidden = NUBE && PERFIL?.rol !== 'admin';
+  pintar();
+}
+function mostrar(v){
+  $$('.vista').forEach(s=>s.hidden = s.id!=='v-'+v);
+  $$('.nav__b').forEach(b=>b.setAttribute('aria-current', b.dataset.vista===v?'page':'false'));
+  window.scrollTo(0,0);
+}
+addEventListener('hashchange', enrutar);
+
+/* ══════════════════════════════════════════════════════════════
+   LISTAS
+   ══════════════════════════════════════════════════════════════ */
+
+function pintar(){
+  const rs = new Map(CLIENTES.map(c=>[c.cedula, resumen(c)]));
+  $('#cnVencer').textContent   = CLIENTES.filter(c=>enTemporada(c) && rs.get(c.cedula).riesgo).length;
+  $('#cnClientes').textContent = CLIENTES.length;
+  $('#cnPagos').textContent    = CLIENTES.filter(c=>rs.get(c.cedula).saldo>0 && honorariosDe(c)>0).length;
+  $('#cnBancos').textContent   = MOVS.length;
+
+  const f = {vencer:pintarVencer, clientes:pintarClientes, cotizador:pintarCotizador, pagos:pintarPagos, bancos:pintarBancos}[vistaActual];
+  if(f) f(rs);
+  $$('[data-limpiar]').forEach(b=>{
+    const t = b.dataset.limpiar;
+    const extra = (t==='tVencer' && semanaSel!==null)
+      || ((t==='tVencer'||t==='tClientes') && etapasOcultas.size>0);
+    b.disabled = !extra && !Object.values(filtros[t]||{}).some(Boolean);
+  });
+  // En la nube NO se guarda desde aquí. Pintar es lo que hace cada snapshot, y
+  // cada `guardar()` recorre los 90 clientes calculando firmas para escribir la
+  // diferencia; con las tandas disparando snapshots, un guardado se realimentaba
+  // en otro y la ventana se quedaba trabada. Cada cambio real llama a `guardar()`
+  // por su cuenta. En local sí: es solo un `localStorage.setItem`.
+  if(!NUBE) guardar();
+}
+
+/* Una tabla vacía porque no hay datos y una tabla vacía porque el filtro
+   no deja pasar nada son dos situaciones distintas: la primera pide
+   importar, la segunda pide limpiar. Decían lo mismo.
+   `universo` es cuántos podrían salir si no hubiera filtros: en
+   vencimientos no son todos los clientes, solo los que aceptaron. */
+function pintarVacio(id, tabla, n, sinDatos, universo){
+  const e = $(id);
+  const total = universo === undefined ? CLIENTES.length : universo;
+  e.hidden = n > 0;
+  if(n > 0) return;
+  e.innerHTML = total
+    ? `<div class="nada__t">Nada coincide con los filtros</div>
+       <p>Los ${total} expedientes siguen ahí. Los filtros de columna los están escondiendo.</p>
+       <button class="btn" data-limpiar="${tabla}">Limpiar filtros</button>`
+    : sinDatos;
+}
+
+function pintarVencer(rs){
+  // Toda esta vista trabaja sobre los que aceptaron. Los demás
+  // siguen enteros en Clientes: no se pierden, solo no tienen plazo.
+  const activos = CLIENTES.filter(enTemporada);
+  const t = activos.map(c=>rs.get(c.cedula));
+  $('#kSemana').textContent   = t.filter(r=>r.proxima).length;
+  $('#kVencidas').textContent = t.filter(r=>r.vencida).length;
+  $('#kDocs').textContent     = t.filter(r=>r.falta>0).length;
+  $('#kPres').textContent     = t.filter(r=>r.presentado).length;
+  const fV = filtros.tVencer || {};
+  $$('.cifra').forEach(b=>{
+    const [,clave,valor] = b.dataset.atajo.split(':');
+    b.setAttribute('aria-pressed', String(fV[clave]===valor));
+  });
+
+  const noObligados = CLIENTES.filter(c=>c.noObligado).length;
+  const sinAceptar = CLIENTES.length - activos.length - noObligados;
+  $('#cifrasNota').textContent = !CLIENTES.length ? ''
+    : [
+        `Solo se cuentan los ${activos.length} que aceptaron la cotización y sí están obligados.`,
+        sinAceptar ? `Otros ${sinAceptar} no han aceptado.` : '',
+        noObligados ? `${noObligados} quedaron marcados como no obligados.` : '',
+        (sinAceptar||noObligados) ? 'Todos siguen en Clientes.' : ''
+      ].filter(Boolean).join(' ');
+
+  const lunes = new Date(HOY); lunes.setDate(HOY.getDate()-((HOY.getDay()+6)%7));
+  const semanaDe = i => {
+    const ini = new Date(lunes); ini.setDate(lunes.getDate()+i*7);
+    const fin = new Date(ini);   fin.setDate(ini.getDate()+7);
+    return {ini, fin};
+  };
+  const enSemana = (r,i) => { const {ini,fin}=semanaDe(i), f=aDate(r.vence); return !!f && f>=ini && f<fin; };
+
+  $('#pista').innerHTML = Array.from({length:12},(_,i)=>{
+    const {ini} = semanaDe(i);
+    const dentro = activos.filter(c=>enSemana(rs.get(c.cedula), i));
+    const pila = dentro.map(c=>{
+      const r = rs.get(c.cedula);
+      const k = r.presentado?'pt--ok' : r.riesgo?'pt--riesgo' : r.falta?'pt--alerta' : '';
+      return `<span class="pt ${k}" title="${esc(c.sheet.nombre)} · ${fCorta(r.vence)}"></span>`;
+    }).join('');
+    const sel = semanaSel===i;
+    return `<button type="button" class="sem${i===0?' sem--ahora':''}${sel?' sem--sel':''}" data-semana="${i}"
+      aria-pressed="${sel}" title="${dentro.length} expediente(s) · ${sel?'quitar el filtro':'ver solo esta semana'}">
+      <div class="sem__pila">${pila}</div>
+      <div class="sem__f">${String(ini.getDate()).padStart(2,'0')} ${MESES[ini.getMonth()]}</div></button>`;
+  }).join('');
+  // Tocar una semana deja abajo solo lo que vence en ella; tocarla otra vez lo quita.
+  $('#pista').onclick = e=>{
+    const b = e.target.closest('[data-semana]'); if(!b) return;
+    const i = Number(b.dataset.semana);
+    semanaSel = (semanaSel===i) ? null : i;
+    pintar();
+  };
+
+  // La tabla de abajo obedece a la semana escogida y a las etapas encendidas.
+  // Las cifras y el calendario siguen contando TODO: son el panorama.
+  const base = activos.filter(c => etapaVisible(c) && (semanaSel===null || enSemana(rs.get(c.cedula), semanaSel)));
+  const datos = base.map(c=>({c, r:rs.get(c.cedula)}));
+  pintarEtapas('etapasVencer');
+  const n = Tabla('tVencer', [
+    {clave:'cliente',et:'Cliente',pista:'nombre o cédula',valor:d=>d.c.sheet.nombre+' '+d.c.cedula,ordenValor:d=>d.c.sheet.nombre,pinta:d=>celCliente(d.c)},
+    {clave:'paso',   et:'Paso',tipo:'opciones',opciones:PASOS,valor:d=>PASOS[d.c.paso-1],ordenValor:d=>d.c.paso,pinta:d=>celPaso(d.c)},
+    {clave:'docs',   et:'Documentos',tipo:'opciones',opciones:['completos','faltan'],valor:d=>d.r.falta?'faltan':'completos',ordenValor:d=>-d.r.falta,pinta:d=>celDocs(d.r)},
+    {clave:'vence',  et:'Vence',pista:'ago',valor:d=>fLarga(d.r.vence),ordenValor:d=>d.r.dias,pinta:d=>celVence(d.r)},
+    {clave:'estado', et:'Situación',tipo:'opciones',opciones:['vencida','esta semana','en plazo','presentada'],
+      valor:d=>d.r.presentado?'presentada':d.r.vencida?'vencida':d.r.proxima?'esta semana':'en plazo',
+      ordenValor:d=>d.r.dias,
+      pinta:d=>{const v=d.r.presentado?['ok','presentada']:d.r.vencida?['riesgo','vencida']:d.r.proxima?['riesgo','esta semana']:['','en plazo'];
+        return `<span class="pastilla ${v[0]?'pastilla--'+v[0]:''}">${v[1]}</span>`;}}
+  ], datos, {orden:{clave:'paso',dir:'desc'}, id:d=>d.c.cedula, alClic:irACliente, repintar:pintar});
+  const rotSemana = semanaSel===null ? '' : (()=>{ const {ini,fin}=semanaDe(semanaSel);
+    const f = new Date(fin); f.setDate(fin.getDate()-1);
+    return ` · semana del ${String(ini.getDate()).padStart(2,'0')} ${MESES[ini.getMonth()]} al ${String(f.getDate()).padStart(2,'0')} ${MESES[f.getMonth()]}`; })();
+  $('#ctVencer').textContent = `${n} de ${activos.length} expedientes aceptados${rotSemana}${notaEtapas()}`;
+  pintarVacio('#nVencer', 'tVencer', n,
+    CLIENTES.length
+      ? `<div class="nada__t">Nadie ha aceptado todavía</div>
+         <p>Aquí solo entran los clientes cuya cotización quedó en <b>Aceptado</b>. Los ${CLIENTES.length} expedientes importados están en <b>Clientes</b>, y van apareciendo aquí a medida que acepten.</p>`
+      : `<div class="nada__t">Todavía no hay expedientes</div>
+         <p>Trae los clientes desde la hoja <b>elaborar</b>. Puedes pegar las columnas que quieras: la cédula, el nombre, el correo, la fecha y el valor se reconocen solos.</p>
+         <button class="btn btn--fuerte" data-importar>Importar del Sheet</button>`,
+    activos.length);
+}
+
+function pintarClientes(rs){
+  const base = CLIENTES.filter(etapaVisible);
+  const datos = base.map(c=>({c, r:rs.get(c.cedula)}));
+  pintarEtapas('etapasClientes');
+  const n = Tabla('tClientes', [
+    {clave:'cliente',et:'Cliente',pista:'nombre o cédula',valor:d=>d.c.sheet.nombre+' '+d.c.cedula,ordenValor:d=>d.c.sheet.nombre,pinta:d=>celCliente(d.c)},
+    {clave:'correo', et:'Correo',pista:'@',valor:d=>d.c.sheet.correo,pinta:d=>`<span class="correo-cel" title="${esc(d.c.sheet.correo||'')}">${esc(d.c.sheet.correo||'—')}</span>`},
+    {clave:'grupo',  et:'Grupo',tipo:'opciones',opciones:ds=>[...new Set(ds.map(x=>x.c.sheet.grupo).filter(Boolean))].sort(),valor:d=>d.c.sheet.grupo,pinta:d=>`<span class="dato">${esc(d.c.sheet.grupo||'—')}</span>`},
+    {clave:'resp',   et:'Responsable',tipo:'opciones',opciones:RESPONSABLES.concat('sin asignar'),valor:d=>d.c.responsable||'sin asignar',
+      pinta:d=>`<span class="dato ${d.c.responsable?'':'dato--riesgo'}">${esc(d.c.responsable||'sin asignar')}</span>`},
+    // «No obligado» entra como una opción más del filtro de paso: es la forma
+    // natural de sacar la lista de quienes se cayeron por topes.
+    {clave:'paso',   et:'Paso',tipo:'opciones',opciones:PASOS.concat('No obligado'),
+      valor:d=>d.c.noObligado?'No obligado':PASOS[d.c.paso-1],ordenValor:d=>d.c.paso,pinta:d=>celPaso(d.c)},
+    {clave:'tiene',  et:'Tiene',pista:'documento',valor:d=>d.c.documentos.filter(x=>x.recibido).map(x=>x.nombre||x.categoria).join(', '),
+      ordenValor:d=>d.r.docsRecibidos,
+      pinta:d=>`<span class="dato ${d.r.falta?'':'dato--ok'}">${d.r.docsRecibidos}/${d.r.docsTotal}</span>`},
+    {clave:'falta',  et:'Le falta',pista:'documento',valor:d=>d.c.noObligado?'no aplica':(catsFaltantes(d.c).join(', ')||'nada'),ordenValor:d=>-d.r.falta,
+      pinta:d=>d.c.noObligado?`<span class="dato">no aplica</span>`
+        :d.r.falta?`<span style="font-size:var(--t-xs);color:var(--alerta)">${esc(catsFaltantes(d.c).join(' · '))}</span>`:`<span class="dato dato--ok">nada</span>`},
+    {clave:'vence',  et:'Vence',pista:'ago',valor:d=>fLarga(d.r.vence),ordenValor:d=>d.r.dias,pinta:d=>celVence(d.r)}
+  ], datos, {orden:{clave:'cliente',dir:'asc'}, id:d=>d.c.cedula, alClic:irACliente, repintar:pintar});
+  $('#ctClientes').textContent = `${n} de ${CLIENTES.length} clientes${notaEtapas()}`;
+  pintarVacio('#nClientes', 'tClientes', n,
+    `<div class="nada__t">Todavía no hay clientes</div>
+     <p>Importa la tabla del Sheet y aquí queda, para cada uno, lo que ya entregó y lo que le falta.</p>
+     <button class="btn btn--fuerte" data-importar>Importar del Sheet</button>`);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   COTIZADOR — arma la propuesta y deja al cliente en el paso Cotizó
+   ══════════════════════════════════════════════════════════════ */
+
+const AÑO_COTIZA = '2025';
+const primerNombre = s => (String(s||'').trim().split(/\s+/)[0]||'').replace(/^./,c=>c.toUpperCase());
+
+// El cotizador REAL (el que responde el cliente y, al aceptar, escribe en el
+// Sheet y de ahí llega a la plataforma). Reconoce al cliente por su correo en
+// el link: /?email=<correo>. Es el mismo que envía el envío masivo del Sheet.
+const COTIZADOR_URL = 'https://rentaschsas-rgb.github.io/cotizador-renta/';
+const linkCotizador = correo => COTIZADOR_URL + (correo ? '?email=' + encodeURIComponent(correo) : '');
+
+// Lo que hay escrito ahora mismo en el formulario.
+function cotzDatos(){
+  return {
+    nombre: $('#cotzNombre').value.trim(),
+    cedula: $('#cotzCedula').value.replace(/[^\d]/g,''),
+    correo: $('#cotzCorreo').value.trim(),
+    grupo:  $('#cotzGrupo').value.trim(),
+    ano:    $('#cotzAno').value.trim() || AÑO_COTIZA,
+    valor:  normNumero($('#cotzValor').value)
+  };
+}
+
+// El texto de la INVITACIÓN al cotizador real. Vive en un solo sitio: lo usan
+// la vista previa, el botón de copiar y el correo. Lleva el link personalizado
+// (con el correo), que es como el formulario reconoce al cliente.
+function cotzTexto(d){
+  const link = linkCotizador(d.correo);
+  const L = [];
+  L.push(d.nombre ? `Estimado(a) ${primerNombre(d.nombre)}:` : 'Estimado(a) cliente:');
+  L.push('');
+  L.push(`Le compartimos su cotización de la Declaración de Renta (año gravable ${d.ano}).`);
+  L.push('Ábrala en el siguiente enlace, responda unas preguntas y, si está de');
+  L.push('acuerdo, acéptela en línea:');
+  L.push('');
+  L.push(link);
+  L.push('');
+  L.push('Cualquier duda, quedamos atentos.');
+  L.push('');
+  L.push('Equipo Cano Herrera Asesorías SAS');
+  return L.join('\n');
+}
+
+function cotzPreview(){ const t = $('#cotzTexto'); if(t) t.textContent = cotzTexto(cotzDatos()); }
+
+function avisoCotz(msg, bien){
+  const a = $('#cotzAviso'); if(!a) return;
+  a.textContent = msg || '';
+  a.className = 'cotz__aviso' + (msg ? (bien ? ' cotz__aviso--bien' : ' cotz__aviso--mal') : '');
+}
+
+// Trae los datos de un cliente que ya existe para cotizarle de nuevo.
+function cotzRellenar(c){
+  $('#cotzNombre').value = c.sheet.nombre || '';
+  $('#cotzCedula').value = c.cedula || '';
+  $('#cotzCorreo').value = c.sheet.correo || '';
+  $('#cotzGrupo').value  = c.sheet.grupo || '';
+  const val = c.sheet.cotizado || honorariosDe(c) || '';
+  $('#cotzValor').value  = val ? String(val) : '';
+  cotzPreview();
+}
+
+// Crea el cliente (o lo adelanta si ya existía) en el paso Cotizó.
+function cotzAgregar(){
+  const d = cotzDatos();
+  if(!d.nombre || !d.cedula){ avisoCotz('Necesito al menos el nombre y la cédula.', false); return; }
+
+  const existente = CLIENTES.find(c=>c.cedula===d.cedula);
+  if(existente){
+    existente.paso = Math.max(existente.paso||1, 2);   // a Cotizó, nunca hacia atrás
+    existente.sheet = { ...existente.sheet,
+      nombre:  d.nombre,
+      correo:  d.correo || existente.sheet.correo || '',
+      grupo:   d.grupo  || existente.sheet.grupo  || '',
+      cotizado:d.valor  || existente.sheet.cotizado || 0,
+      estado:  existente.sheet.estado || 'Cotizado' };
+    if(d.valor && !existente.sheet.honorarios) existente.sheet.honorarios = d.valor;
+    guardar(); pintar();
+    avisoCotz(`${d.nombre} ya existía: lo dejé en el paso Cotizó y actualicé sus datos.`, true);
+    brindis(`${d.nombre}: actualizado en el paso Cotizó.`);
+    return;
+  }
+
+  const nuevo = {
+    cedula: d.cedula,
+    sheet: { nombre:d.nombre, correo:d.correo, vence:'', honorarios:d.valor||0,
+             cotizado:d.valor||0, estado:'Cotizado', grupo:d.grupo, responsable:'', otras:{} },
+    paso: 2,                              // Cotizó
+    responsable:'', honorarioManual:null, honorarioFijo:false, noObligado:false,
+    tareas:{}, documentos:docsNuevos(), hitos:{}, notas:[], resumen:null, _cargado:false
+  };
+  CLIENTES = [nuevo, ...CLIENTES];
+  refrescarSelectClientes();
+  guardar();
+  $('#formCotz').reset(); $('#cotzAno').value = AÑO_COTIZA;
+  pintar();
+  avisoCotz(`${d.nombre} quedó agregado en el paso Cotizó.`, true);
+  brindis(`${d.nombre} agregado en el paso Cotizó.`);
+}
+
+let cotzCableado = false;
+function cablearCotizador(){
+  if(cotzCableado) return; cotzCableado = true;
+  const form = $('#formCotz'); if(!form) return;
+
+  ['cotzNombre','cotzCedula','cotzCorreo','cotzGrupo','cotzAno','cotzValor']
+    .forEach(id=>{ const el = $('#'+id); if(el) el.oninput = cotzPreview; });
+
+  // Autorrellenar desde un cliente existente.
+  $('#cotzBuscar').oninput = e=>{
+    const v = e.target.value.trim(), ced = v.replace(/[^\d]/g,'');
+    const c = CLIENTES.find(x=> `${x.sheet.nombre} · ${x.cedula}`===v || (ced && x.cedula===ced));
+    if(c){ cotzRellenar(c); e.target.value=''; }
+  };
+
+  // Abre el cotizador REAL con el correo del cliente (para revisarlo o
+  // rellenarlo junto a él). Es el mismo formulario que se envía por correo.
+  $('#cotzAbrir').onclick = ()=>{
+    const d = cotzDatos();
+    window.open(linkCotizador(d.correo), '_blank', 'noopener');
+    avisoCotz(d.correo ? 'Abrí el cotizador con el correo del cliente.' : 'Abrí el cotizador (sin correo: entrará como cliente nuevo).', true);
+  };
+
+  $('#cotzCopiar').onclick = async ()=>{
+    try{ await navigator.clipboard.writeText(cotzTexto(cotzDatos()));
+      avisoCotz('Invitación copiada al portapapeles.', true); }
+    catch(_){ avisoCotz('No pude copiar solo; selecciona el texto de la vista previa y cópialo.', false); }
+  };
+
+  // Abre el correo del propio usuario con la invitación lista (con el link del
+  // cotizador). La envía él, no la plataforma: sin permisos ni servidor de correo.
+  $('#cotzCorreoBtn').onclick = ()=>{
+    const d = cotzDatos();
+    if(!d.correo){ avisoCotz('Escribe el correo del cliente para poder enviarlo.', false); return; }
+    const asunto = `Su cotización de Declaración de Renta ${d.ano} — Cano Herrera Asesorías SAS`;
+    location.href = `mailto:${encodeURIComponent(d.correo)}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cotzTexto(d))}`;
+    avisoCotz('Abrí tu correo con la invitación lista para enviar.', true);
+  };
+
+  $('#cotzLimpiar').onclick = ()=>{ form.reset(); $('#cotzAno').value = AÑO_COTIZA; cotzPreview(); avisoCotz('', true); };
+
+  form.onsubmit = ev=>{ ev.preventDefault(); cotzAgregar(); };
+}
+
+function pintarCotizador(){
+  cablearCotizador();
+  const dl = $('#cotzClientes');
+  if(dl && document.activeElement !== $('#cotzBuscar'))
+    dl.innerHTML = CLIENTES.map(c=>`<option value="${esc(c.sheet.nombre)} · ${c.cedula}"></option>`).join('');
+  cotzPreview();
+}
+
+function pintarPagos(rs){
+  const fact = CLIENTES.reduce((s,c)=>s+honorariosDe(c),0);
+  const rec  = MOVS.reduce((s,m)=>s+m.monto,0);
+  const deudores = CLIENTES.filter(c=>rs.get(c.cedula).saldo>0 && honorariosDe(c)>0);
+  $('#kFact').textContent   = pesos(fact);
+  $('#kRec').textContent    = pesos(rec);
+  $('#kRecPct').textContent = fact ? Math.round(rec/fact*100)+'% de lo facturado' : '—';
+  $('#kDeuda').textContent  = pesos(deudores.reduce((s,c)=>s+rs.get(c.cedula).saldo,0));
+  $('#kDeudaN').textContent = `${deudores.length} clientes`;
+
+  const datos = CLIENTES.map(c=>({c, r:rs.get(c.cedula)}));
+  const n = Tabla('tPagos', [
+    {clave:'cliente',et:'Cliente',pista:'nombre o cédula',valor:d=>d.c.sheet.nombre+' '+d.c.cedula,ordenValor:d=>d.c.sheet.nombre,pinta:d=>celCliente(d.c)},
+    {clave:'paso',   et:'Paso',tipo:'opciones',opciones:PASOS.concat('No obligado'),
+      valor:d=>d.c.noObligado?'No obligado':PASOS[d.c.paso-1],ordenValor:d=>d.c.paso,pinta:d=>celPaso(d.c)},
+    {clave:'hon',    et:'Honorarios',num:true,pista:'monto',valor:d=>honorariosDe(d.c)||'',ordenValor:d=>honorariosDe(d.c),pinta:d=>`<span class="dato">${pesos(honorariosDe(d.c))}</span>`},
+    {clave:'abon',   et:'Abonado',num:true,pista:'monto',valor:d=>d.r.pagado||'',ordenValor:d=>d.r.pagado,pinta:d=>`<span class="dato ${d.r.pagado?'dato--ok':''}">${d.r.pagado?pesos(d.r.pagado):'—'}</span>`},
+    {clave:'saldo',  et:'Saldo',num:true,pista:'monto',valor:d=>d.r.saldo||'',ordenValor:d=>d.r.saldo,pinta:d=>`<span class="dato ${d.r.saldo?'dato--riesgo':'dato--ok'}">${d.r.saldo?pesos(d.r.saldo):'al día'}</span>`},
+    {clave:'sit',    et:'Situación',tipo:'opciones',opciones:['pagado','debe','abono parcial','sin facturar'],
+      valor:d=>!honorariosDe(d.c)?'sin facturar':d.r.saldo===0?'pagado':d.r.pagado>0?'abono parcial':'debe',
+      ordenValor:d=>d.r.saldo,
+      pinta:d=>{const v=!honorariosDe(d.c)?['','sin facturar']:d.r.saldo===0?['ok','pagado']:d.r.pagado>0?['alerta','abono parcial']:['riesgo','debe'];
+        return `<span class="pastilla ${v[0]?'pastilla--'+v[0]:''}">${v[1]}</span>`;}}
+  ], datos, {orden:{clave:'saldo',dir:'desc'}, id:d=>d.c.cedula, alClic:irACliente, repintar:pintar});
+  $('#ctPagos').textContent = `${n} de ${CLIENTES.length} clientes`;
+  $('#nPagos').hidden = n>0;
+}
+
+function pintarBancos(){
+  const total = MOVS.reduce((s,m)=>s+m.monto,0);
+  $('#reparto').innerHTML = REPARTO.map(g=>{
+    const recibido = MOVS.filter(m=>g.personas.includes(m.quien)).reduce((s,m)=>s+m.monto,0);
+    const toca = total*g.cuota, dif = recibido-toca;
+    const clase = Math.abs(dif)<1?'cero':dif>0?'debe':'favor';
+    const frase = Math.abs(dif)<1 ? 'Cuentas cuadradas.'
+      : dif>0 ? `Recibió de más. Debe trasladar <strong>${pesos(dif)}</strong>.`
+              : `Recibió de menos. Le deben <strong>${pesos(-dif)}</strong>.`;
+    const detalle = g.personas.length>1 ? g.personas.map(p=>
+      `<div class="socio__l"><span style="padding-left:12px;color:var(--tx-3)">${p}</span><span>${pesos(MOVS.filter(m=>m.quien===p).reduce((s,m)=>s+m.monto,0))}</span></div>`).join('') : '';
+    return `<div class="socio tarjeta-vidrio">
+      <div class="socio__n">${esc(g.nombre)} <span class="socio__q">${Math.round(g.cuota*100)}%</span></div>
+      <div style="margin-top:14px">
+        <div class="socio__l"><span>Le corresponde</span><span>${pesos(toca)}</span></div>
+        <div class="socio__l"><span>Recibió</span><span>${pesos(recibido)}</span></div>${detalle}</div>
+      <div class="saldo saldo--${clase}">${frase}</div></div>`;
+  }).join('') + `<div class="socio tarjeta-vidrio">
+      <div class="socio__n">Total recaudado</div>
+      <div style="margin-top:14px">
+        <div class="socio__l"><span>Movimientos</span><span>${MOVS.length}</span></div>
+        <div class="socio__l"><span>Suma</span><span>${pesos(total)}</span></div>
+        <div class="socio__l"><span>Sin conciliar</span><span>${MOVS.filter(m=>!m.conciliado).length}</span></div></div>
+      <div class="saldo saldo--cero">El reparto se calcula sobre el total recibido por los tres.</div></div>`;
+
+  const nombreDe = ced => (CLIENTES.find(c=>c.cedula===ced)||{sheet:{}}).sheet.nombre || 'Sin asignar';
+  const n = Tabla('tBancos', [
+    {clave:'fecha',et:'Fecha',pista:'2026',valor:m=>fLarga(m.fecha),ordenValor:m=>m.fecha,pinta:m=>`<span class="dato">${fLarga(m.fecha)}</span>`},
+    {clave:'cli',  et:'Cliente',pista:'nombre',valor:m=>nombreDe(m.cedula)+' '+m.cedula,
+      pinta:m=>`<div class="nom">${esc(nombreDe(m.cedula))}</div><div class="sub">${esc(m.cedula||'—')}</div>`},
+    {clave:'monto',et:'Monto',num:true,pista:'monto',valor:m=>m.monto,ordenValor:m=>m.monto,pinta:m=>`<span class="dato">${pesos(m.monto)}</span>`},
+    {clave:'quien',et:'Recibido por',tipo:'opciones',opciones:PERSONAS,valor:m=>m.quien,pinta:m=>`<span class="pastilla pastilla--curso">${esc(m.quien)}</span>`},
+    {clave:'medio',et:'Medio',tipo:'opciones',opciones:MEDIOS,valor:m=>m.medio,pinta:m=>`<span class="dato">${esc(m.medio)}</span>`},
+    {clave:'ref',  et:'Referencia',pista:'texto',valor:m=>m.referencia,pinta:m=>`<span style="color:var(--tx-2)">${esc(m.referencia||'—')}</span>`},
+    {clave:'conc', et:'Conciliado',tipo:'opciones',opciones:['sí','no'],valor:m=>m.conciliado?'sí':'no',
+      pinta:m=>`<button class="pastilla ${m.conciliado?'pastilla--ok':''}" data-accion="conc" data-id="${esc(m.id)}" title="Marcar como conciliado">${m.conciliado?'sí':'marcar'}</button>`},
+    {clave:'quitar',et:'',valor:()=>'',pinta:m=>`<button class="pastilla" data-accion="borrar" data-id="${esc(m.id)}" title="Eliminar movimiento" aria-label="Eliminar movimiento">✕</button>`}
+  ], MOVS, {orden:{clave:'fecha',dir:'desc'}, repintar:pintar});
+  $('#ctBancos').textContent = `${n} de ${MOVS.length} movimientos`;
+  $('#nBancos').hidden = MOVS.length>0;
+}
+
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-accion]'); if(!b) return;
+  e.stopPropagation();
+  const i = MOVS.findIndex(x=>x.id===b.dataset.id); if(i<0) return;
+  // `guardar()` explícito: pintar ya no escribe (ver pintar()).
+  if(b.dataset.accion==='conc'){ MOVS[i].conciliado = !MOVS[i].conciliado; guardar(); pintar(); }
+  if(b.dataset.accion==='borrar'){
+    const [q] = MOVS.splice(i,1); guardar(); pintar();
+    brindis(`Movimiento de ${pesos(q.monto)} eliminado.`, ()=>MOVS.splice(i,0,q));
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════
+   RECORDATORIO DE DOCUMENTOS — el correo de «esto es lo que falta»
+   Es el mismo camino del cotizador: la plataforma redacta y abre TU
+   correo con el mensaje listo. No hay servidor de correo detrás, así
+   que sale desde tu buzón, con tu firma y tu historial de enviados.
+   ══════════════════════════════════════════════════════════════ */
+
+const PASO_DOCS = PASOS.indexOf('Documentos') + 1;
+const TAREA_SOLICITAR = 'Solicitar documentos faltantes (si aplica)';
+
+// El Sheet admite varios correos en la misma celda (coma, punto y coma,
+// espacio o barra). Todos son del mismo cliente: se les escribe a todos.
+const correosDe = c => String(c.sheet.correo||'').split(/[,;\/\s]+/).map(s=>s.trim()).filter(s=>/@/.test(s));
+
+/* Qué pedir. Se nombra la categoría, y si dentro de ella ya llegó algo
+   se aclara entre paréntesis qué es lo que sigue pendiente: pedirle
+   «Certificados bancarios» a quien ya mandó el de Bancolombia hace que
+   vuelva a mandar el mismo. */
+function faltantesDe(c){
+  return catsFaltantes(c).map(cat=>{
+    const items = itemsDe(c,cat);
+    const pend  = items.filter(d=>!d.recibido && d.nombre).map(d=>d.nombre);
+    return (pend.length && items.some(d=>d.recibido)) ? `${cat} (${pend.join(', ')})` : cat;
+  });
+}
+
+// Última vez que se le pidieron los papeles: sale de los comentarios del
+// expediente, que ya se guardan. No hace falta un campo nuevo del cliente.
+const ultimaSolicitud = c => c.notas.filter(n=>n.tipo==='solicitud').map(n=>n.creado).sort().slice(-1)[0] || '';
+
+function correoFaltantes(c){
+  const vence = venceDe(c);
+  const faltan = faltantesDe(c);
+  const L = [];
+  L.push(`Estimado(a) ${primerNombre(c.sheet.nombre) || 'cliente'}:`);
+  L.push('');
+  L.push(`Le escribimos de Cano Herrera Asesorías SAS porque, a la fecha, NO hemos recibido los siguientes documentos, necesarios para elaborar su Declaración de Renta del año gravable ${PERIODO}:`);
+  L.push('');
+  faltan.forEach(f => L.push(`  • ${f}`));
+  L.push('');
+  L.push(`Su declaración vence el ${fLarga(vence)}, fecha que la DIAN le asigna según los dos últimos dígitos de su cédula.`);
+  L.push('Sin estos documentos no podemos elaborarla ni presentarla dentro del plazo, y presentarla fuera de tiempo genera SANCIÓN por extemporaneidad e intereses de mora a cargo del contribuyente.');
+  L.push('');
+  L.push('Le agradecemos enviárnoslos lo más pronto posible, respondiendo a este mismo correo, para alcanzar a presentar su declaración a tiempo.');
+  L.push('');
+  L.push('Quedamos atentos a cualquier inquietud.');
+  L.push('');
+  L.push('Equipo Cano Herrera Asesorías SAS');
+  return {
+    asunto: `Documentos pendientes para su Declaración de Renta ${PERIODO} — vence el ${fLarga(vence)}`,
+    cuerpo: L.join('\n')
+  };
+}
+
+/* La barra que aparece arriba de las categorías cuando falta algo. */
+function bloquePedir(c){
+  // Sin el expediente traído no se sabe qué falta: el resumen da un número,
+  // no los nombres, y el correo tiene que decir cuáles son.
+  if(c.noObligado || (NUBE && !c._cargado)) return '';
+  const faltan = faltantesDe(c);
+  const correos = correosDe(c);
+  const ult = ultimaSolicitud(c);
+  if(!faltan.length) return ult
+    ? `<div class="pedir"><span class="pedir__x" style="margin:0;text-align:left;max-width:none">Papeles completos. La última solicitud se envió el ${fLarga(ult)}.</span></div>`
+    : '';
+  const nota = !correos.length
+    ? 'Este cliente no tiene correo en el Sheet: no hay a dónde escribirle.'
+    : ult ? `Última solicitud enviada el ${fLarga(ult)}.`
+          : 'Se abre tu correo con el mensaje listo: lo que falta, la fecha de vencimiento y el aviso de sanción.';
+  return `<div class="pedir pedir--alerta">
+    <button class="btn btn--fuerte btn--chico" data-pedirdocs${correos.length?'':' disabled'}>✉ Pedir por correo lo que falta (${faltan.length})</button>
+    <button class="btn btn--chico" data-copiarpedido>⧉ Copiar el texto</button>
+    <span class="pedir__x">${esc(nota)}</span>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PÁGINA DE CLIENTE
+   ══════════════════════════════════════════════════════════════ */
+
+const hitosAbiertos = new Set();
+const catsAbiertas  = new Set();
+/* El expediente abre plegado. Lo que despliegues se queda desplegado
+   mientras dure la sesión, también al cambiar de cliente: si viniste a
+   revisar documentos, los vas a querer ver en el siguiente también. */
+const seccionesAbiertas = new Set();
+/* Comentarios que están en modo edición (por id). Se vacía al repintar
+   solo cuando se guarda o cancela, así el textarea no se cierra solo. */
+const notasEditando = new Set();
+
+function notasDe(c, paso){ return c.notas.filter(n=>n.paso===paso); }
+// Quién firma un comentario: el nombre del perfil autorizado (John, Johanna,
+// Leidy…); si no hay perfil, el correo; y como último recurso, «Equipo».
+function autorActual(){ return PERFIL?.nombre || USUARIO?.email || 'Equipo'; }
+
+function pintarCliente(c){
+  const r = resumen(c);
+  const movs = MOVS.filter(m=>m.cedula===c.cedula);
+  const esAdmin = PERFIL?.rol === 'admin';
+  const hon = honorariosDe(c);
+  if(!hitosAbiertos.size) hitosAbiertos.add(c.paso);
+
+  $('#tituloVista').textContent = c.sheet.nombre;
+  $('#subVista').textContent = `C.C. ${c.cedula}${c.sheet.grupo?' · grupo '+c.sheet.grupo:''} · vence ${fLarga(r.vence)}`;
+  $('#cabeceraAcc').innerHTML = '<button class="btn" id="btnVolver">← Volver a la lista</button>';
+  $('#btnVolver').onclick = ()=>history.length>1 ? history.back() : irA('clientes');
+
+  const situacion = c.noObligado ? ['','no obligada a declarar']
+    : r.presentado ? ['ok','presentada'] : r.vencida ? ['riesgo','vencida']
+    : r.proxima ? ['riesgo','vence esta semana'] : ['','en plazo'];
+
+  $('#v-cliente').innerHTML = `
+  <div class="exp">
+    <div class="exp__col">
+
+      <details class="bloque bloque--pleg tarjeta-vidrio" data-seccion="proceso"${seccionesAbiertas.has('proceso')?' open':''}>
+        <summary class="bloque__r">Proceso <span>paso ${c.paso} de ${PASOS.length} · ${esc(PASOS[c.paso-1])}</span></summary>
+        <div class="bloque__cuerpo">
+        ${PASOS.map((p,i)=>{
+          const n = i+1;
+          const estado = n<c.paso ? 'hecho' : n===c.paso ? 'actual' : 'pendiente';
+          const ns = notasDe(c,n);
+          const fecha = c.hitos[n]?.fecha;
+          const chk = CHECKLIST_PASO[n];
+          const chkDone = chk ? chk.filter(t=>c.tareas?.[t]).length : 0;
+          return `<details class="hito hito--${estado}" data-hito="${n}"${hitosAbiertos.has(n)?' open':''}>
+            <summary class="hito__cab">
+              <span class="hito__n">${n<c.paso?'✓':n}</span>
+              <span class="hito__t">${esc(p)}</span>
+              ${chk?`<span class="pastilla ${chkDone===chk.length?'pastilla--ok':'pastilla--alerta'}">${chkDone}/${chk.length}</span>`:''}
+              ${ns.length?`<span class="pastilla">${ns.length} nota${ns.length>1?'s':''}</span>`:''}
+              ${estado==='actual'?'<span class="pastilla pastilla--curso">actual</span>':''}
+              <span class="hito__f">${fecha?fLarga(fecha):''}</span>
+            </summary>
+            <div class="hito__cuerpo">
+              ${chk?`<div class="chequeo">${chk.map(t=>{
+                const guia = TAREA_GUIA[t];
+                return `<div class="chequeo__fila">
+                  <label class="chequeo__i"><input type="checkbox" data-tarea="${esc(t)}"${c.tareas?.[t]?' checked':''}><span>${esc(t)}</span></label>
+                  ${guia?`<span class="pista-info" tabindex="0" role="img" aria-label="Guía de colores para colorear el reporte">i<span class="pista-info__pop">${guia.map(g=>`<span class="pista-info__l"><i style="background:${g.color}"></i>${esc(g.et)}</span>`).join('')}</span></span>`:''}
+                </div>`;
+              }).join('')}</div>`:''}
+              ${estado!=='actual'?`<div class="hito__acc"><button class="btn btn--chico" data-paso="${n}">Marcar como paso actual</button></div>`:''}
+              ${ns.length ? ns.map(pintarNota).join('') : '<p class="sinnota">Sin comentarios en este paso.</p>'}
+              <form class="comentar" data-notapaso="${n}">
+                <textarea class="campo campo--area" rows="1" placeholder="Comentar sobre «${esc(p)}»…  (Enter envía · Shift+Enter salto de línea)" aria-label="Comentario del paso ${esc(p)}"></textarea>
+                <button class="btn btn--fuerte btn--chico" type="submit">Anotar</button>
+              </form>
+            </div>
+          </details>`;
+        }).join('')}
+        </div>
+      </details>
+
+      <details class="bloque bloque--pleg tarjeta-vidrio" data-seccion="documentos"${seccionesAbiertas.has('documentos')?' open':''}>
+        <summary class="bloque__r">Documentos <span>${r.docsRecibidos} de ${r.docsTotal} recibidos${r.falta?` · faltan ${r.falta}`:''}</span></summary>
+        <div class="bloque__cuerpo">
+        ${bloquePedir(c)}
+        ${catsDe(c).map(cat=>{
+          const items = itemsDe(c,cat);
+          const listos = items.filter(d=>d.recibido).length;
+          const completa = catCompleta(c,cat);
+          return `<details class="cat" data-cat="${esc(cat)}"${catsAbiertas.has(cat)?' open':''}>
+            <summary class="cat__cab">
+              <span class="cat__t">${esc(cat)}</span>
+              <span class="pastilla ${completa?'pastilla--ok':'pastilla--alerta'}">${listos}/${items.length||0}</span>
+            </summary>
+            <div class="cat__cuerpo">
+              ${items.length ? items.map(d=>`
+                <div class="papel ${d.recibido?'papel--si':''}">
+                  <span class="papel__t">
+                    <span class="papel__n">${esc(d.nombre||cat)}</span>
+                    ${d.nombre?'':'<span class="papel__x">documento general de la categoría</span>'}
+                  </span>
+                  <button class="sw sw--chico" role="switch" aria-checked="${d.recibido?'true':'false'}" data-doc="${esc(d.id)}" aria-label="${esc(d.nombre||cat)}"></button>
+                  <button class="pastilla" data-quitardoc="${esc(d.id)}" title="Quitar" aria-label="Quitar ${esc(d.nombre||cat)}">✕</button>
+                </div>`).join('')
+              : '<p class="sinnota">Sin documentos en esta categoría.</p>'}
+              <form class="agregar" data-agregar="${esc(cat)}">
+                <input class="campo" placeholder="Agregar, p. ej. Banco Davivienda" aria-label="Nuevo documento en ${esc(cat)}">
+                <button class="btn btn--chico" type="submit">Agregar</button>
+              </form>
+            </div>
+          </details>`;
+        }).join('')}
+        ${(()=>{ const faltan = ORDEN_CAT.filter(x=>!catsDe(c).includes(x));
+          return faltan.length ? `<form class="agregar" data-agregarcat style="margin-top:calc(var(--u)*2)">
+            <select class="campo" aria-label="Agregar categoría de documento">
+              <option value="">+ Agregar otra categoría…</option>
+              ${faltan.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}
+            </select>
+            <button class="btn btn--chico" type="submit">Agregar</button>
+          </form>` : ''; })()}
+        </div>
+      </details>
+
+      <details class="bloque bloque--pleg tarjeta-vidrio" data-seccion="comentarios"${seccionesAbiertas.has('comentarios')?' open':''}>
+        <summary class="bloque__r">Comentarios generales${notasDe(c,null).length?` <span>${notasDe(c,null).length}</span>`:''}</summary>
+        <div class="bloque__cuerpo">
+          ${notasDe(c,null).length ? notasDe(c,null).map(pintarNota).join('') : '<p class="sinnota">Sin comentarios generales.</p>'}
+          <form class="comentar" data-notapaso="">
+            <textarea class="campo campo--area" rows="1" placeholder="Anotar algo del expediente…  (Enter envía · Shift+Enter salto de línea)" aria-label="Comentario general"></textarea>
+            <button class="btn btn--fuerte" type="submit">Anotar</button>
+          </form>
+        </div>
+      </details>
+
+    </div>
+
+    <div class="exp__col">
+      <div class="bloque tarjeta-vidrio">
+        <div class="bloque__r">Situación</div>
+        <dl style="margin:0">
+          <div class="par"><dt>Estado</dt><dd><span class="pastilla ${situacion[0]?'pastilla--'+situacion[0]:''}">${situacion[1]}</span></dd></div>
+          <div class="par"><dt>Paso</dt><dd>${celPaso(c)}</dd></div>
+          <div class="par">
+            <dt>No obligado<br><span class="sub" style="display:block;max-width:22ch">Aceptó, pero por topes no tiene que declarar</span></dt>
+            <dd><button class="sw" role="switch" aria-checked="${c.noObligado?'true':'false'}" data-noobligado
+                  aria-label="Marcar como no obligado a declarar"></button></dd></div>
+          <div class="par"><dt>Vence</dt><dd>${c.noObligado?'no aplica':`${fLarga(r.vence)}${r.presentado?'':` · ${r.dias}d`}`}</dd></div>
+          <div class="par"><dt>Documentos</dt><dd>${c.noObligado?'no aplica':(r.falta?`faltan ${r.falta} categorías`:'completos')}</dd></div>
+          <div class="par"><dt>Responsable</dt><dd>
+            <select class="campo campo--min" data-responsable aria-label="Responsable del cliente">
+              <option value="">Sin asignar</option>
+              ${RESPONSABLES.map(p=>`<option value="${esc(p)}"${c.responsable===p?' selected':''}>${esc(p)}</option>`).join('')}
+            </select></dd></div>
+        </dl>
+      </div>
+
+      <div class="bloque tarjeta-vidrio">
+        <div class="bloque__r">Cobro</div>
+        <dl style="margin:0">
+          <div class="par"><dt>Honorarios</dt><dd>${esAdmin
+            ? `<span class="hon-edit"><input class="campo campo--min" type="text" inputmode="numeric" data-honorario value="${hon?pesos(hon):''}" placeholder="sin acordar" aria-label="Editar honorarios">${c.honorarioManual!=null?`<button class="pastilla" data-honorarioreset title="Volver al valor del Sheet/RESPUESTAS">↺</button>`:''}</span>`
+            : (hon ? pesos(hon) : `<span style="color:var(--tx-3)">sin acordar</span>`)}${c.honorarioManual===0?' <span class="sub" style="display:inline">regalado</span>':''}</dd></div>
+          ${!hon && c.sheet.cotizado
+            ? `<div class="par"><dt>Cotizado</dt><dd style="color:var(--tx-3)">${pesos(c.sheet.cotizado)}</dd></div>` : ''}
+          <div class="par"><dt>Abonado</dt><dd>${pesos(r.pagado)}</dd></div>
+          <div class="par"><dt>Saldo</dt><dd style="color:${r.saldo?'var(--riesgo)':'var(--ok)'}">${r.saldo?pesos(r.saldo):'al día'}</dd></div>
+        </dl>
+        ${movs.length?`<div style="margin-top:14px">${movs.map(m=>
+          `<div class="par"><dt style="font-size:var(--t-xs)">${fLarga(m.fecha)} · ${esc(m.quien)}</dt><dd>${pesos(m.monto)}</dd></div>`).join('')}</div>`:''}
+      </div>
+
+      <div class="bloque tarjeta-vidrio">
+        <div class="bloque__r">Datos del Sheet</div>
+        <dl style="margin:0">
+          <div class="par"><dt>Cédula</dt><dd>${esc(c.cedula)}</dd></div>
+          <div class="par"><dt>Correo</dt><dd style="word-break:break-all">${esc(c.sheet.correo||'—')}</dd></div>
+          <div class="par"><dt>Cotización</dt><dd>${esc(c.sheet.estado||'—')}</dd></div>
+          <div class="par"><dt>Grupo</dt><dd>${esc(c.sheet.grupo||'—')}</dd></div>
+          ${Object.entries(c.sheet.otras||{}).map(([k,v])=>
+            `<div class="par"><dt>${esc(k)}</dt><dd style="word-break:break-word">${esc(v)}</dd></div>`).join('')}
+        </dl>
+        <p class="sinnota" style="margin-top:12px">Estos campos se editan en el Sheet, no aquí.</p>
+      </div>
+    </div>
+  </div>`;
+
+  cablearCliente(c);
+}
+
+const pintarNota = n => {
+  const cli = n.origen==='cliente';
+  // Modo edición: un textarea con Guardar / Cancelar (solo notas del equipo).
+  if(notasEditando.has(n.id)) return `<div class="nota nota--edit">
+    <div class="nota__c">${esc(n.autor||'Equipo')}<em>editando…</em></div>
+    <textarea class="campo campo--area" data-editarea="${n.id}" rows="3">${esc(n.texto)}</textarea>
+    <div class="nota__acc">
+      <button class="btn btn--fuerte btn--chico" data-guardarnota="${n.id}">Guardar</button>
+      <button class="btn btn--chico" data-cancelarnota="${n.id}">Cancelar</button>
+    </div></div>`;
+  return `<div class="nota ${cli?'nota--cli':''}">
+    <div class="nota__c">${cli?'El cliente':esc(n.autor||'Equipo')}<em>${fLarga(n.creado)}${n.editado?' · editado':''}</em>${cli?'':`<span class="nota__h"><button class="nota__b" data-editnota="${n.id}" title="Editar comentario">✎</button><button class="nota__b" data-borrarnota="${n.id}" title="Eliminar comentario">🗑</button></span>`}</div>
+    <div class="nota__x">${esc(n.texto)}</div></div>`;
+};
+
+function cablearCliente(c){
+  const raiz = $('#v-cliente');
+
+  // recordar qué está desplegado, para que no se cierre al repintar
+  $$('[data-seccion]',raiz).forEach(d=> d.ontoggle = ()=>{
+    d.open ? seccionesAbiertas.add(d.dataset.seccion) : seccionesAbiertas.delete(d.dataset.seccion);
+  });
+  $$('[data-hito]',raiz).forEach(d=> d.ontoggle = ()=>{
+    d.open ? hitosAbiertos.add(Number(d.dataset.hito)) : hitosAbiertos.delete(Number(d.dataset.hito));
+  });
+  $$('[data-cat]',raiz).forEach(d=> d.ontoggle = ()=>{
+    d.open ? catsAbiertas.add(d.dataset.cat) : catsAbiertas.delete(d.dataset.cat);
+  });
+
+  // cambiar de paso
+  $$('[data-paso]',raiz).forEach(b=> b.onclick = ()=>{
+    const antes = c.paso, antesHitos = {...c.hitos};
+    const n = Number(b.dataset.paso);
+    c.paso = n;
+    for(let k=1;k<n;k++) if(!c.hitos[k]) c.hitos[k] = {fecha:hoyISO()};
+    for(let k=n;k<=PASOS.length;k++) delete c.hitos[k];
+    hitosAbiertos.add(n);
+    guardar(); pintarCliente(c);
+    brindis(`${c.sheet.nombre}: ${PASOS[n-1]}.`, ()=>{ c.paso=antes; c.hitos=antesHitos; });
+  });
+
+  // documentos
+  $$('[data-doc]',raiz).forEach(b=> b.onclick = ()=>{
+    const d = c.documentos.find(x=>x.id===b.dataset.doc); if(!d) return;
+    d.recibido = d.recibido?0:1;
+    guardar(); pintarCliente(c);
+  });
+  $$('[data-quitardoc]',raiz).forEach(b=> b.onclick = ()=>{
+    const i = c.documentos.findIndex(x=>x.id===b.dataset.quitardoc); if(i<0) return;
+    const [q] = c.documentos.splice(i,1);
+    guardar(); pintarCliente(c);
+    brindis(`«${q.nombre||q.categoria}» eliminado.`, ()=>c.documentos.splice(i,0,q));
+  });
+  $$('[data-agregar]',raiz).forEach(f=> f.onsubmit = ev=>{
+    ev.preventDefault();
+    const inp = f.querySelector('input'), nombre = inp.value.trim();
+    if(!nombre) return;
+    const cat = f.dataset.agregar;
+    // El primer ítem genérico de la categoría se convierte en el nombrado
+    const generico = c.documentos.find(d=>d.categoria===cat && !d.nombre && !d.recibido);
+    if(generico) generico.nombre = nombre;
+    else c.documentos.push({id:idNuevo('d'), categoria:cat, nombre, recibido:0, nota:''});
+    catsAbiertas.add(cat);
+    guardar(); pintarCliente(c);
+  });
+  /* Pedir los documentos que faltan. Abre el correo con el mensaje ya
+     redactado y deja constancia en el expediente: quién lo pidió y cuándo
+     es exactamente lo que se pregunta tres semanas después. También marca
+     la tarea «Solicitar documentos faltantes» del paso Documentos. */
+  const registrarSolicitud = (faltan, medio)=>{
+    c.tareas = c.tareas || {};
+    c.tareas[TAREA_SOLICITAR] = true;
+    c.notas.unshift({id:idNuevo('n'),
+      texto:`Solicitud de documentos faltantes (${medio}): ${faltan.join(', ')}.`,
+      paso:PASO_DOCS, origen:'equipo', autor:autorActual(), creado:hoyISO(), tipo:'solicitud'});
+    guardar(); pintarCliente(c);
+  };
+  const btnPedir = $('[data-pedirdocs]',raiz);
+  if(btnPedir) btnPedir.onclick = ()=>{
+    const correos = correosDe(c);
+    if(!correos.length){ brindis('Ese cliente no tiene correo registrado en el Sheet.'); return; }
+    const faltan = faltantesDe(c);
+    if(!faltan.length){ brindis('No falta ningún documento.'); return; }
+    const {asunto, cuerpo} = correoFaltantes(c);
+    // La coma separa destinatarios y la arroba es parte de la dirección: ninguna
+    // de las dos se codifica, o hay clientes de correo que no reconocen a quién
+    // se le escribe.
+    const para = correos.map(x=>encodeURIComponent(x).replace(/%40/g,'@')).join(',');
+    const url = `mailto:${para}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
+    /* Windows corta el mailto pasados unos 2.000 caracteres, y con muchas
+       categorías faltantes el mensaje llega ahí. Antes que mandar un correo
+       mocho, se abre solo con el asunto y el texto queda en el portapapeles. */
+    if(url.length > 1900){
+      navigator.clipboard.writeText(cuerpo).catch(()=>{});
+      location.href = `mailto:${para}?subject=${encodeURIComponent(asunto)}`;
+      brindis('La lista es larga: te copié el mensaje al portapapeles. Pégalo en el correo que acabo de abrir.');
+    }else{
+      location.href = url;
+      brindis('Abrí tu correo con la solicitud lista. Queda anotada en el expediente.');
+    }
+    registrarSolicitud(faltan, 'correo');
+  };
+  const btnCopiarPedido = $('[data-copiarpedido]',raiz);
+  if(btnCopiarPedido) btnCopiarPedido.onclick = async ()=>{
+    const faltan = faltantesDe(c);
+    if(!faltan.length){ brindis('No falta ningún documento.'); return; }
+    try{
+      await navigator.clipboard.writeText(correoFaltantes(c).cuerpo);
+      brindis('Texto copiado. Si lo envías por WhatsApp, anótalo tú en el expediente.');
+    }catch(_){ brindis('No pude copiar solo. Usa el botón de correo.'); }
+  };
+
+  // No obligado a declarar. Deja un comentario general automático, porque es
+  // una decisión que alguien va a preguntar en tres semanas: quién y cuándo.
+  const swNoOb = $('[data-noobligado]',raiz);
+  if(swNoOb) swNoOb.onclick = ()=>{
+    c.noObligado = !c.noObligado;
+    c.notas.unshift({id:idNuevo('n'),
+      texto: c.noObligado
+        ? 'Marcado como NO OBLIGADO a declarar (no supera los topes). Sale del tablero de vencimientos.'
+        : 'Vuelve a quedar OBLIGADO a declarar. Regresa al tablero de vencimientos.',
+      paso:null, origen:'equipo', autor:autorActual(), creado:hoyISO()});
+    guardar(); pintarCliente(c);
+    brindis(c.noObligado
+      ? `${c.sheet.nombre}: no obligado. Ya no aparece en vencimientos.`
+      : `${c.sheet.nombre}: vuelve a estar obligado.`);
+  };
+
+  const selResp = $('[data-responsable]',raiz);
+  if(selResp) selResp.onchange = ()=>{ c.responsable = selResp.value; guardar(); brindis(c.responsable?`Responsable: ${c.responsable}.`:'Sin responsable asignado.'); };
+
+  const inpHon = $('[data-honorario]',raiz);
+  if(inpHon) inpHon.onchange = ()=>{
+    const t = inpHon.value.trim();
+    if(t===''){ c.honorarioManual = null; c.honorarioFijo = false; }   // vuelve al valor del Sheet
+    else { c.honorarioManual = normNumero(t); c.honorarioFijo = true; } // fijado a mano (incl. $0)
+    guardar(); pintarCliente(c);
+    brindis(c.honorarioManual===0?'Honorarios en $0 (regalado).':'Honorarios actualizados.');
+  };
+  const btnHonReset = $('[data-honorarioreset]',raiz);
+  if(btnHonReset) btnHonReset.onclick = ()=>{ c.honorarioManual = null; c.honorarioFijo = false; guardar(); pintarCliente(c); };
+
+  $$('[data-tarea]',raiz).forEach(chk=> chk.onchange = ()=>{
+    c.tareas = c.tareas || {};
+    // Deschulear NO borra la llave (Firestore con {merge:true} no elimina
+    // llaves omitidas de un mapa: reaparecerían). Se guarda `false`, que sí
+    // sobrescribe el `true` anterior.
+    c.tareas[chk.dataset.tarea] = !!chk.checked;
+    guardar(); pintarCliente(c);
+  });
+
+  $$('[data-agregarcat]',raiz).forEach(f=> f.onsubmit = ev=>{
+    ev.preventDefault();
+    const cat = f.querySelector('select').value;
+    if(!cat || c.documentos.some(d=>d.categoria===cat)) return;
+    c.documentos.push({id:idNuevo('d'), categoria:cat, nombre:'', recibido:0, nota:''});
+    catsAbiertas.add(cat);
+    guardar(); pintarCliente(c);
+  });
+
+  // comentarios: crear
+  $$('[data-notapaso]',raiz).forEach(f=>{
+    const ta = f.querySelector('textarea');
+    f.onsubmit = ev=>{
+      ev.preventDefault();
+      const texto = ta.value.trim();
+      if(!texto) return;
+      const paso = f.dataset.notapaso ? Number(f.dataset.notapaso) : null;
+      c.notas.unshift({id:idNuevo('n'), texto, paso, origen:'equipo', autor:autorActual(), creado:hoyISO()});
+      if(paso) hitosAbiertos.add(paso);
+      guardar(); pintarCliente(c);
+      brindis('Comentario guardado.');
+    };
+    // Enter envía; Shift+Enter inserta un salto de línea para formatear.
+    if(ta) ta.onkeydown = ev=>{
+      if(ev.key==='Enter' && !ev.shiftKey){ ev.preventDefault(); f.requestSubmit(); }
+    };
+  });
+
+  // comentarios: editar / eliminar (solo notas del equipo)
+  $$('[data-editnota]',raiz).forEach(b=> b.onclick = ()=>{ notasEditando.add(b.dataset.editnota); pintarCliente(c); });
+  $$('[data-cancelarnota]',raiz).forEach(b=> b.onclick = ()=>{ notasEditando.delete(b.dataset.cancelarnota); pintarCliente(c); });
+  const guardarEdicion = id=>{
+    const ta = $(`[data-editarea="${id}"]`,raiz); if(!ta) return;
+    const texto = ta.value.trim(), nota = c.notas.find(x=>x.id===id);
+    notasEditando.delete(id);
+    if(!nota){ pintarCliente(c); return; }
+    if(!texto){ pintarCliente(c); return; }   // vacío: no borra, solo cancela
+    if(texto!==nota.texto){ nota.texto = texto; nota.editado = true; guardar(); brindis('Comentario actualizado.'); }
+    pintarCliente(c);
+  };
+  $$('[data-guardarnota]',raiz).forEach(b=> b.onclick = ()=> guardarEdicion(b.dataset.guardarnota));
+  $$('[data-editarea]',raiz).forEach(ta=> ta.onkeydown = ev=>{
+    if(ev.key==='Enter' && !ev.shiftKey){ ev.preventDefault(); guardarEdicion(ta.dataset.editarea); }
+  });
+  $$('[data-borrarnota]',raiz).forEach(b=> b.onclick = ()=>{
+    const id = b.dataset.borrarnota, i = c.notas.findIndex(x=>x.id===id); if(i<0) return;
+    const [q] = c.notas.splice(i,1);
+    guardar(); pintarCliente(c);
+    brindis('Comentario eliminado.', ()=>{ c.notas.splice(i,0,q); guardar(); });
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   IMPORTACIÓN
+   ══════════════════════════════════════════════════════════════ */
+/* ── Importar del Sheet ────────────────────────────────────────
+   No damos por hecho que pegaste A:G completo. Se pueden copiar
+   columnas sueltas (A y D:G, por ejemplo) y entonces los índices
+   se corren. Así que las columnas se reconocen por su CONTENIDO,
+   no por su posición.
+   ────────────────────────────────────────────────────────────── */
+
+const esCedula  = v => /^\d[\d.\s]{4,13}$/.test(String(v||'').trim());
+const esCorreo  = v => /@/.test(String(v||''));
+const esFecha   = v => !!normFecha(v);
+const esPlata   = v => { const n = normNumero(v); return n >= 50000 && n <= 90000000; };
+const esNombre  = v => /[A-Za-zÁÉÍÓÚÑáéíóúñ]{3}/.test(String(v||'')) && !esCorreo(v) && !esFecha(v);
+
+// Elige la columna donde más filas cumplen la prueba, siempre que la
+// cumpla al menos la mitad. Cuando empatan —y empatan a menudo: una
+// columna de códigos como "NAT" también parece nombre, y un valor de
+// 380000 también parece cédula— desempata `puntaje`.
+function columnaQue(filas, prueba, vetadas, puntaje){
+  const n = Math.max(...filas.map(f=>f.length));
+  let mejor = -1, mejorA = 0, mejorP = -Infinity;
+  for(let i=0;i<n;i++){
+    if(vetadas.includes(i)) continue;
+    const vals = filas.map(f=>f[i]);
+    const a = vals.filter(prueba).length;
+    if(a < filas.length/2) continue;
+    const p = puntaje ? puntaje(vals) : 0;
+    if(a > mejorA || (a === mejorA && p > mejorP)){ mejor = i; mejorA = a; mejorP = p; }
+  }
+  return mejor;
+}
+
+/* Con tres columnas de plata en la hoja —valor 2025, PRECIO 2026 y
+   PRECIO ACORDADO— adivinar por contenido ya no sirve: las tres son
+   números parecidos. Cuando venga la fila de encabezados, mandan ellos. */
+const normEnc = s => String(s||'').toLowerCase().normalize('NFD')
+  .replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
+
+const ENCABEZADOS = {
+  cedula:      ['cedula','cedula cliente','cc','documento','nit','identificacion'],
+  nombre:      ['nombre','nombres','cliente','nombre cliente','razon social'],
+  correo:      ['correo','correo electronico','email','e-mail','mail'],
+  vence:       ['vence','vencimiento','fecha vencimiento','fecha de vencimiento','plazo'],
+  grupo:       ['grupo'],
+  responsable: ['responsable'],
+  estado:      ['estado'],
+  acordado:    ['precio acordado','valor acordado'],
+  cotizado:    ['precio 2026','valor 2026'],
+  anterior:    ['valor 2025','precio 2025','valor ano anterior']
+};
+
+/* Columnas de la hoja que NO se traen, aunque vengan en el pegado:
+   - CLAVE y FIRMA son contraseñas de los clientes en la DIAN. Copiarlas
+     a una segunda base multiplica por dos el sitio donde se pueden filtrar,
+     y aquí no hacen falta para nada.
+   - PRESENTADO y PAGADO son territorio de la plataforma: traerlas
+     mostraría un "FALSE" viejo al lado del paso real y se contradirían.
+   - ENVIAR COTIZADOR es una casilla de trabajo del Sheet. */
+const COLUMNAS_FUERA = ['clave','firma','presentado','pagado','enviar cotizador'];
+
+function encabezadoDe(celda){
+  const n = normEnc(celda);
+  if(!n) return null;
+  for(const clave of Object.keys(ENCABEZADOS)) if(ENCABEZADOS[clave].includes(n)) return clave;
+  return null;
+}
+
+// Devuelve {fila, mapa} si alguna de las primeras filas es de encabezados.
+function detectarEncabezado(filas){
+  for(let i=0; i<Math.min(3, filas.length); i++){
+    const mapa = {}; let hallados = 0;
+    filas[i].forEach((celda,j)=>{
+      const clave = encabezadoDe(celda);
+      if(clave && mapa[clave]===undefined){ mapa[clave]=j; hallados++; }
+    });
+    if(hallados>=3 && mapa.cedula!==undefined && mapa.nombre!==undefined) return {fila:i, mapa};
+  }
+  return null;
+}
+
+const prom = ns => ns.reduce((s,x)=>s+x,0) / (ns.length||1);
+// Las cédulas no se repiten; los valores sí.
+const puntajeCedula = vals => new Set(vals).size / vals.length;
+// "Marina Salgado Ríos" tiene tres palabras; "NAT" tiene una.
+const puntajeNombre = vals => prom(vals.map(v=>String(v||'').trim().split(/\s+/).filter(w=>w.length>1).length));
+
+// El Sheet solo llega hasta "Aceptado". Los pasos 3 a 6 son de la
+// plataforma, así que ESTADO decide el paso SOLO cuando el cliente entra
+// por primera vez. Reimportar jamás devuelve a nadie hacia atrás.
+function pasoDeEstado(estado){
+  if(/acept/i.test(estado)) return 2;   // Cotizó
+  return 1;                             // Invitado (Enviado o vacío)
+}
+
+function importar(texto){
+  const lineas = texto.split(/\r?\n/).filter(l=>l.trim());
+  if(!lineas.length) return {error:'No hay nada que importar.'};
+
+  const sep = lineas[0].includes('\t') ? '\t' : (lineas[0].includes(';') ? ';' : ',');
+  const todas = lineas.map(l=>l.split(sep).map(x=>x.trim()));
+
+  const enc = detectarEncabezado(todas);
+  let mapa, filas, titulos = [];
+  if(enc){
+    mapa = enc.mapa;
+    titulos = todas[enc.fila];
+    filas = todas.slice(enc.fila+1).filter(f=>String(f[mapa.cedula]||'').replace(/[^\d]/g,''));
+  }else{
+    // Sin encabezados hay que adivinar, y con tres columnas de plata
+    // en la hoja eso es una lotería. Se avisa más abajo.
+    filas = todas.filter(f=>f.some(esCedula));
+    if(!filas.length) return {error:'No encontré ninguna cédula. Incluye la columna de la cédula.'};
+    const iCed = columnaQue(filas, esCedula, [], puntajeCedula);
+    const iCor = columnaQue(filas, esCorreo, [iCed]);
+    const iVen = columnaQue(filas, esFecha,  [iCed, iCor]);
+    const iVal = columnaQue(filas, esPlata,  [iCed, iCor, iVen]);
+    const iNom = columnaQue(filas, esNombre, [iCed, iCor, iVen, iVal], puntajeNombre);
+    if(iNom < 0) return {error:'Encontré cédulas pero ninguna columna con nombres. Incluye la columna del nombre.'};
+    mapa = {cedula:iCed, nombre:iNom};
+    if(iCor>=0) mapa.correo = iCor;
+    if(iVen>=0) mapa.vence  = iVen;
+    if(iVal>=0) mapa.acordado = iVal;
+  }
+  if(!filas.length) return {error:'Reconocí los encabezados pero no hay ninguna fila con cédula debajo.'};
+
+  const col = (f,clave) => mapa[clave]===undefined ? '' : String(f[mapa[clave]]||'').trim();
+  // Todo lo que no es una columna conocida se guarda igual, con su título.
+  const usadas = new Set(Object.values(mapa));
+
+  const previos = new Map(CLIENTES.map(c=>[c.cedula,c]));
+  const nuevos = []; let saltadas = 0, rechazadas = 0;
+
+  for(const f of filas){
+    const cedula = col(f,'cedula').replace(/[^\d]/g,'');
+    const nombre = col(f,'nombre');
+    if(!cedula || !nombre){ saltadas++; continue; }
+
+    const estado = col(f,'estado');
+    if(/rechaz/i.test(estado)){ rechazadas++; continue; }
+
+    const antes = previos.get(cedula);
+    const otras = {};
+    f.forEach((v,j)=>{
+      if(usadas.has(j) || !v) return;
+      const titulo = (titulos[j]||'').trim();
+      if(COLUMNAS_FUERA.includes(normEnc(titulo))) return;
+      otras[titulo || `columna ${j+1}`] = v;
+    });
+
+    nuevos.push({
+      cedula,
+      // Territorio del Sheet: esto sí se sobrescribe en cada importación.
+      sheet:{ nombre,
+              correo:      mapa.correo!==undefined      ? col(f,'correo')      : (antes?.sheet.correo || ''),
+              vence:       mapa.vence!==undefined       ? normFecha(col(f,'vence')) : (antes?.sheet.vence || ''),
+              // Lo que se cobra es lo ACORDADO. PRECIO 2026 es la cotización
+              // y el valor 2025 es el precio viejo: ninguno de los dos se debe.
+              honorarios:  mapa.acordado!==undefined    ? normNumero(col(f,'acordado')) : (antes?.sheet.honorarios || 0),
+              // Referencia, no deuda: no suma a lo facturado ni al saldo.
+              cotizado:    mapa.cotizado!==undefined    ? normNumero(col(f,'cotizado')) : (antes?.sheet.cotizado || 0),
+              estado:      mapa.estado!==undefined      ? estado               : (antes?.sheet.estado || ''),
+              grupo:       mapa.grupo!==undefined       ? col(f,'grupo')       : (antes?.sheet.grupo || ''),
+              responsable: mapa.responsable!==undefined ? col(f,'responsable') : (antes?.sheet.responsable || ''),
+              otras },
+      // Territorio de la plataforma: reimportar nunca lo pisa… salvo para
+      // ADELANTAR. Quien ya dijo "Aceptado" en el Sheet debe estar como mínimo
+      // en "Cotizó" (paso 2), aunque hubiera entrado antes en "Invitado". Nunca
+      // hacia atrás: si ya iba en Documentos o más, se queda donde va (Math.max).
+      paso:       Math.max(antes?.paso || 1, pasoDeEstado(estado)),
+      // El responsable se asigna en la plataforma. La columna RESPONSABLE del
+      // Sheet es un TRUE/FALSE (marca de contacto del grupo), no un nombre,
+      // así que NO se siembra de ahí: arranca vacío y no se pisa al reimportar.
+      responsable: antes?.responsable || '',
+      honorarioManual: antes?.honorarioManual ?? null,
+      honorarioFijo:   antes?.honorarioFijo ?? false,
+      // Que el Sheet siga diciendo «Aceptado» no lo vuelve a obligar: eso se
+      // supo aquí, revisando los topes, y reimportar no puede deshacerlo.
+      noObligado:      antes?.noObligado ?? false,
+      tareas:     antes?.tareas     || {},
+      documentos: antes?.documentos || docsNuevos(),
+      hitos:      antes?.hitos      || {},
+      notas:      antes?.notas      || [],
+      resumen:    antes?.resumen    || null,
+      _cargado:   !!antes?._cargado
+    });
+  }
+  if(!nuevos.length) return {error:`No se reconoció ninguna fila (${saltadas} sin cédula o sin nombre, ${rechazadas} rechazadas).`};
+
+  const nombresCol = {cedula:'cédula', nombre:'nombre', correo:'correo', vence:'vence',
+    acordado:'valor acordado', estado:'estado', grupo:'grupo', responsable:'responsable'};
+  const mapaTexto = Object.keys(nombresCol)
+    .map(k => `${nombresCol[k]}: ${mapa[k]===undefined ? '—' : (enc ? (titulos[mapa[k]]||'col '+(mapa[k]+1)) : 'columna '+(mapa[k]+1))}`)
+    .join(' · ');
+
+  return {
+    ok: nuevos.length, saltadas, rechazadas, nuevos, porEncabezado: !!enc,
+    aviso: enc ? '' : 'Sin fila de encabezados: adiviné las columnas por su contenido. Con tres columnas de plata en la hoja, el valor puede salir mal. Vuelve a copiar incluyendo la fila de títulos.',
+    mapa: mapaTexto,
+    muestra: nuevos.slice(0,3).map(c=>[
+      c.cedula, c.sheet.nombre, c.sheet.correo||'sin correo',
+      honorariosDe(c) ? pesos(honorariosDe(c)) : 'sin valor acordado',
+      c.sheet.estado || 'sin estado',
+      PASOS[c.paso-1]
+    ].join(' · '))
+  };
+}
+
+// Se aplica solo cuando confirmas: los clientes que ya existían y no
+// venían en el pegado se quedan como están.
+function aplicarImportacion(nuevos){
+  const pegadas = new Set(nuevos.map(c=>c.cedula));
+  CLIENTES = [...nuevos, ...CLIENTES.filter(c=>!pegadas.has(c.cedula))];
+}
+
+const abrirModal  = ()=>{ $('#modal').hidden=false; $('#pegar').focus(); };
+const cerrarModal = ()=>{ $('#modal').hidden=true; };
+$('#btnCerrarModal').onclick = cerrarModal;
+$('#modal').onclick = e=>{ if(e.target===$('#modal')) cerrarModal(); };
+// Importar es en dos tiempos: primero se muestra qué se entendió, y
+// solo entonces se escribe. La primera versión escribía de una, y
+// bastaba con pegar las columnas corridas para llenar el Sheet de basura.
+const ROTULO_REVISAR = 'Revisar (no guarda todavía)';
+let importPrevio = null;
+
+$('#btnHacerImp').onclick = async ()=>{
+  const av = $('#avisoImp'), btn = $('#btnHacerImp');
+
+  // ── Segundo clic: guardar de verdad ──────────────────────
+  if(importPrevio){
+    const cuantos = importPrevio.ok;
+    aplicarImportacion(importPrevio.nuevos);
+    importPrevio = null;
+    refrescarSelectClientes(); enrutar();
+
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    av.className = 'aviso'; av.textContent = `Escribiendo ${cuantos} clientes…`;
+
+    const r = await guardar();          // espera la confirmación del servidor
+    btn.disabled = false; btn.textContent = ROTULO_REVISAR;
+
+    if(r && r.ok === false){
+      av.className = 'aviso aviso--mal';
+      av.innerHTML = `<b>No se guardó nada.</b><br>${esc(r.error)}`;
+      return;                            // el modal se queda abierto con el error
+    }
+    cerrarModal();
+    brindis(`${cuantos} clientes guardados.`);
+    return;
+  }
+
+  // ── Primer clic: solo mostrar qué se entendió ────────────
+  const res = importar($('#pegar').value);
+  if(res.error){ av.className='aviso aviso--mal'; av.innerHTML = esc(res.error); return; }
+  importPrevio = res;
+  btn.textContent = `Sí, guardar ${res.ok} clientes`;
+  av.className = res.porEncabezado ? 'aviso aviso--bien' : 'aviso aviso--mal';
+  av.innerHTML =
+    `<b>${res.ok} clientes reconocidos</b>` +
+    (res.rechazadas ? ` · ${res.rechazadas} rechazadas, fuera` : '') +
+    (res.saltadas   ? ` · ${res.saltadas} sin cédula o sin nombre` : '') +
+    ` — <b>todavía no se ha guardado nada.</b><br>` +
+    (res.aviso ? `<br><b>${esc(res.aviso)}</b><br>` : '') +
+    `<br><span style="opacity:.75">${esc(res.mapa)}</span><br><br>` +
+    `Revisa que estos tres estén bien y vuelve a pulsar el botón:<br>` +
+    res.muestra.map(m=>`<span style="opacity:.75">${esc(m)}</span>`).join('<br>');
+};
+
+$('#pegar').addEventListener('input', ()=>{
+  importPrevio = null; respPrevio = null;
+  $('#btnHacerImp').textContent = ROTULO_REVISAR;
+  $('#btnDocsResp').textContent = ROTULO_RESP;
+  $('#avisoImp').innerHTML = '';
+});
+$('#btnHacerImp').textContent = ROTULO_REVISAR;
+
+/* ══ Documentos desde la hoja RESPUESTAS ═══════════════════════════
+   Ajusta los papeles de cada cliente según lo que respondió en el
+   cotizador. No toca el mapa `sheet`, ni el paso, ni los comentarios:
+   solo agrega las categorías que faltan y conserva todo lo ya recibido. */
+
+// Lee la hoja pegada y arma, por cliente ya existente, la lista de
+// categorías que le corresponden. No escribe nada: solo prepara.
+function analizarRespuestas(texto){
+  const lineas = texto.split(/\r?\n/).filter(l=>l.trim());
+  if(!lineas.length) return {error:'No hay nada pegado.'};
+  const sep = lineas[0].includes('\t') ? '\t' : (lineas[0].includes(';') ? ';' : ',');
+  const todas = lineas.map(l=>l.split(sep).map(x=>x.trim()));
+
+  let fEnc = -1;
+  for(let i=0; i<Math.min(6,todas.length); i++){
+    if(todas[i].some(h=>/c[eé]dula/i.test(h))){ fEnc = i; break; }
+  }
+  if(fEnc<0) return {error:'No reconocí la hoja RESPUESTAS: falta la fila de encabezados con la columna «Cédula».'};
+
+  const heads = todas[fEnc];
+  const iCed = heads.findIndex(h=>/c[eé]dula/i.test(h));
+  const idxDe = {}; heads.forEach((h,j)=>{ if(idxDe[normEnc(h)]===undefined) idxDe[normEnc(h)] = j; });
+
+  const conocidas = [...REGLAS_DOC.map(r=>r.col), REGLA_ACTIVOS.col];
+  if(!conocidas.some(col=> idxDe[normEnc(col)]!==undefined))
+    return {error:'Esto trae la cédula pero ninguna columna de respuestas (Salario, Honorarios…). ¿Es la hoja RESPUESTAS?'};
+
+  // Pisar el pago (honorarios) desde RESPUESTAS es cosa de admin, porque toca
+  // el mapa `sheet`. Un operador solo ajusta documentos.
+  const puedePrecio = PERFIL?.rol === 'admin';
+  const porCedula = new Map(CLIENTES.map(c=>[c.cedula,c]));
+  const items = []; let noEncontradas = 0, filas = 0, preciosCambian = 0;
+  for(const fila of todas.slice(fEnc+1)){
+    const ced = String(fila[iCed]||'').replace(/[^\d]/g,'');
+    if(!ced) continue;
+    filas++;
+    const c = porCedula.get(ced);
+    if(!c){ noEncontradas++; continue; }
+    const get = col => { const j = idxDe[normEnc(col)]; return j===undefined ? '' : String(fila[j]||'').trim(); };
+    // Precio Neto = lo que se cobra (equivale a PRECIO ACORDADO). Solo se
+    // usa si viene con valor; 0/vacío no pisa un honorario existente.
+    const pn = normNumero(get('Precio Neto'));
+    // No pisar un honorario fijado a mano en la plataforma (p. ej. $0 regalado).
+    const precio = (puedePrecio && pn > 0 && !c.honorarioFijo) ? pn : null;
+    if(precio != null && precio !== honorariosDe(c)) preciosCambian++;
+    // Se guarda la cédula, no el objeto: la nube reconstruye CLIENTES en cada
+    // cambio, así que el cliente se re-resuelve fresco al aplicar.
+    items.push({cedula:c.cedula, cats: catsSegunRespuestas(get), precio});
+  }
+  if(!items.length) return {error:`Ninguna de las ${filas} cédulas coincide con un cliente ya importado.`};
+  return {items, aptos:items.length, noEncontradas, filas, preciosCambian};
+}
+
+// Mezcla segura: conserva todo documento con trabajo hecho (recibido, con
+// nombre propio o con nota) y agrega las categorías sugeridas que falten.
+// Los genéricos vacíos que ya no aplican se sueltan. Nunca borra nada recibido.
+function fusionarDocs(c, cats){
+  const trabajado = d => d.recibido || (d.nombre||'').trim() || (d.nota||'').trim();
+  const resultado = c.documentos.filter(trabajado);
+  const presentes = new Set(resultado.map(d=>d.categoria));
+  let agregados = 0;
+  for(const cat of cats){
+    if(presentes.has(cat)) continue;
+    docsDeCats([cat]).forEach(d=> resultado.push(d));
+    presentes.add(cat); agregados++;
+  }
+  // Cambió si se agregó algo o si se soltó algún genérico que ya no aplica.
+  const cambio = agregados>0 || resultado.length !== c.documentos.length;
+  c.documentos = resultado;
+  return {agregados, cambio};
+}
+
+const ROTULO_RESP = 'Actualizar desde RESPUESTAS';
+let respPrevio = null;
+$('#btnDocsResp').onclick = async ()=>{
+  const av = $('#avisoImp'), btn = $('#btnDocsResp');
+
+  // ── Segundo clic: cargar expedientes, mezclar y guardar ──
+  if(respPrevio){
+    const lista = respPrevio.items; respPrevio = null;
+    btn.disabled = true; $('#btnHacerImp').disabled = true;
+
+    // Los documentos solo se sincronizan con el expediente cargado, así que
+    // primero traemos los que falten (en tandas, sin saturar la lectura).
+    // Se re-resuelve por cédula en cada tanda porque una escritura dispara
+    // onSnapshot y CLIENTES se reconstruye con objetos nuevos.
+    const need = [...new Set(lista.map(x=>x.cedula))];
+    for(let i=0; i<need.length; i+=8){
+      av.className = 'aviso';
+      av.textContent = `Cargando expedientes… ${Math.min(i+8,need.length)} de ${need.length}`;
+      const tanda = need.slice(i,i+8)
+        .map(ced=>CLIENTES.find(c=>c.cedula===ced)).filter(c=>c && !c._cargado);
+      await Promise.all(tanda.map(c=>cargarExpediente(c)));
+    }
+
+    // Mezcla síncrona sobre los objetos vigentes de CLIENTES.
+    const byCed = new Map(CLIENTES.map(c=>[c.cedula,c]));
+    let nCli = 0, nDoc = 0, nPrecio = 0;
+    for(const {cedula,cats,precio} of lista){
+      const c = byCed.get(cedula); if(!c) continue;
+      const {agregados, cambio} = fusionarDocs(c, cats);
+      let toco = cambio;
+      // Pisar el honorario desde el Precio Neto de RESPUESTAS (override de
+      // plataforma; no toca el mapa `sheet`).
+      if(precio != null && precio !== honorariosDe(c)){
+        c.honorarioManual = precio;
+        nPrecio++; toco = true;
+      }
+      if(toco){ nCli++; nDoc += agregados; }
+    }
+
+    btn.textContent = 'Guardando…';
+    av.textContent = `Guardando ${nCli} expedientes…`;
+    const r = await guardar();
+    btn.disabled = false; $('#btnHacerImp').disabled = false; btn.textContent = ROTULO_RESP;
+
+    if(r && r.ok === false){
+      av.className = 'aviso aviso--mal';
+      av.innerHTML = `<b>No se guardó todo.</b><br>${esc(r.error)}`;
+      enrutar(); return;
+    }
+    cerrarModal(); enrutar();
+    brindis(`${nCli} expedientes ajustados · ${nDoc} documentos${nPrecio?` · ${nPrecio} pagos corregidos`:''}.`);
+    return;
+  }
+
+  // ── Primer clic: mostrar qué se entendió ──
+  importPrevio = null; $('#btnHacerImp').textContent = ROTULO_REVISAR;
+  const prev = analizarRespuestas($('#pegar').value);
+  if(prev.error){ av.className = 'aviso aviso--mal'; av.innerHTML = esc(prev.error); return; }
+  respPrevio = prev;
+  btn.textContent = `Sí, actualizar ${prev.aptos} expedientes`;
+  av.className = 'aviso aviso--bien';
+  av.innerHTML =
+    `<b>${prev.aptos} clientes encontrados en RESPUESTAS</b>` +
+    (prev.noEncontradas ? ` · ${prev.noEncontradas} cédulas sin cliente (se omiten)` : '') +
+    (prev.preciosCambian ? ` · <b>${prev.preciosCambian} pagos se corregirán</b> (Precio Neto)` : '') +
+    `<br>Se ajustan los documentos según las respuestas${prev.preciosCambian?' y se pisa el honorario con el Precio Neto':''}. ` +
+    `Lo que ya esté recibido no se toca. <b>Todavía no se ha guardado nada.</b>`;
+};
+
+/* ══════════════════════════════════════════════════════════════
+   ARRANQUE
+   ══════════════════════════════════════════════════════════════ */
+
+const temaGuardado = localStorage.getItem(LLAVE+':tema');
+if(temaGuardado) document.documentElement.dataset.tema = temaGuardado;
+else if(matchMedia('(prefers-color-scheme: light)').matches) document.documentElement.dataset.tema='claro';
+$('#btnTema').onclick = ()=>{
+  const t = document.documentElement.dataset.tema==='oscuro'?'claro':'oscuro';
+  document.documentElement.dataset.tema = t;
+  localStorage.setItem(LLAVE+':tema', t);
+};
+
+$$('.nav__b').forEach(b=> b.onclick = ()=>irA(b.dataset.vista));
+document.addEventListener('click', e=>{
+  const a = e.target.closest('[data-atajo]'); if(!a) return;
+  const [vista, clave, valor] = a.dataset.atajo.split(':');
+  const tabla = TABLA_DE[vista];
+  filtros[tabla] = filtros[tabla] || {};
+  filtros[tabla][clave] = filtros[tabla][clave]===valor ? '' : valor;
+  irA(vista);
+});
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-limpiar]'); if(!b) return;
+  // La semana escogida y las etapas apagadas también esconden filas: si
+  // «Limpiar» no las quitara, la tabla seguiría vacía sin explicación.
+  filtros[b.dataset.limpiar] = {};
+  if(b.dataset.limpiar==='tVencer') semanaSel = null;
+  if(b.dataset.limpiar==='tVencer' || b.dataset.limpiar==='tClientes'){ etapasOcultas.clear(); guardarEtapas(); }
+  pintar();
+});
+// Apagar una etapa la esconde de las listas; encenderla la devuelve.
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-etapa]'); if(!b) return;
+  if(b.dataset.etapa==='todas') etapasOcultas.clear();
+  else {
+    const n = Number(b.dataset.etapa);
+    etapasOcultas.has(n) ? etapasOcultas.delete(n) : etapasOcultas.add(n);
+  }
+  guardarEtapas(); pintar();
+});
+document.addEventListener('click', e=>{
+  if(e.target.closest('[data-importar]')) abrirModal();
+});
+
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape'){
+    if(!$('#modalMov').hidden) cerrarMov();
+    else if(!$('#modal').hidden) cerrarModal();
+    return;
+  }
+  if(e.key==='/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)){
+    const f = $(`#${TABLA_DE[vistaActual]} [data-filtro]`);
+    if(f){ e.preventDefault(); f.focus(); }
+  }
+});
+
+$('#mFecha').value = hoyISO();
+$('#mQuien').innerHTML = PERSONAS.map(p=>`<option>${p}</option>`).join('');
+$('#mMedio').innerHTML = MEDIOS.map(m=>`<option>${m}</option>`).join('');
+function refrescarSelectClientes(){
+  $('#mCliente').innerHTML = '<option value="">— sin asignar —</option>' +
+    [...CLIENTES].sort((a,b)=>a.sheet.nombre.localeCompare(b.sheet.nombre,'es'))
+      .map(c=>`<option value="${esc(c.cedula)}">${esc(c.sheet.nombre)}</option>`).join('');
+}
+$('#mMonto').addEventListener('input', e=>{
+  const n = e.target.value.replace(/[^\d]/g,'');
+  e.target.value = n ? Number(n).toLocaleString('es-CO') : '';
+});
+/* ── Diálogo de movimiento ─────────────────────────────────────
+   Dos estados: el formulario, y el recibo de lo que se acaba de
+   registrar. El recibo solo aparece cuando el servidor confirmó.
+   ────────────────────────────────────────────────────────────── */
+function estadoMovFormulario(){
+  $('#recibo').hidden = true;
+  $('#formMov').hidden = false;
+  $('#btnGuardarMov').hidden = false;
+  $('#btnGuardarMov').disabled = false;
+  $('#btnGuardarMov').textContent = 'Registrar';
+  $('#btnOtroMov').hidden = true;
+  $('#btnListoMov').hidden = true;
+  $('#avisoMov').className = 'aviso';
+  $('#avisoMov').textContent = 'Queda sin conciliar hasta que lo marques en la tabla.';
+}
+
+function abrirMov(){
+  $('#mFecha').value = hoyISO();
+  $('#mMonto').value = '';
+  $('#mNota').value  = '';
+  estadoMovFormulario();
+  $('#modalMov').hidden = false;
+  $('#mMonto').focus();
+}
+const cerrarMov = ()=>{ $('#modalMov').hidden = true; };
+
+$('#btnNuevoMov').onclick  = abrirMov;
+$('#btnNuevoMov2').onclick = abrirMov;
+$('#btnCerrarMov').onclick = cerrarMov;
+$('#btnListoMov').onclick  = cerrarMov;
+$('#btnOtroMov').onclick   = ()=>{ $('#mMonto').value=''; $('#mNota').value=''; estadoMovFormulario(); $('#mMonto').focus(); };
+$('#modalMov').onclick = e=>{ if(e.target===$('#modalMov')) cerrarMov(); };
+
+function pintarRecibo(mov){
+  const c = CLIENTES.find(x=>x.cedula===mov.cedula);
+  $('#recibo').className = 'recibo';
+  $('#recibo').innerHTML = `
+    <div class="recibo__r">Movimiento registrado</div>
+    <div class="recibo__n">${pesos(mov.monto)}</div>
+    <div class="recibo__q">recibidos por ${esc(mov.quien)}</div>
+    <dl class="recibo__dl">
+      <div class="recibo__l"><dt>Fecha</dt><dd>${fLarga(mov.fecha)}</dd></div>
+      <div class="recibo__l"><dt>Medio</dt><dd>${esc(mov.medio)}</dd></div>
+      <div class="recibo__l"><dt>Cliente</dt><dd>${c?esc(c.sheet.nombre):'sin asignar'}</dd></div>
+      ${mov.referencia?`<div class="recibo__l"><dt>Referencia</dt><dd>${esc(mov.referencia)}</dd></div>`:''}
+      ${c?`<div class="recibo__l"><dt>Saldo del cliente</dt><dd>${
+        (()=>{ const s=Math.max(0,honorariosDe(c)-pagadoDe(c.cedula));
+               return honorariosDe(c) ? (s?pesos(s):'al día') : 'sin valor acordado'; })()
+      }</dd></div>`:''}
+    </dl>`;
+  $('#recibo').hidden = false;
+}
+
+$('#formMov').onsubmit = async e=>{
+  e.preventDefault();
+  const monto = normNumero($('#mMonto').value);
+  if(!(monto>0)){ $('#mMonto').focus(); return; }
+
+  const mov = {id:idNuevo('m'), fecha:$('#mFecha').value, cedula:$('#mCliente').value, monto,
+    quien:$('#mQuien').value, medio:$('#mMedio').value, referencia:$('#mNota').value.trim(), conciliado:false};
+
+  $('#btnGuardarMov').disabled = true;
+  $('#btnGuardarMov').textContent = 'Guardando…';
+  MOVS.push(mov);
+
+  const r = await guardar();
+
+  if(r && r.ok === false){
+    // No quedó guardado: se saca de la memoria para no mentir en pantalla.
+    const i = MOVS.findIndex(x=>x.id===mov.id); if(i>=0) MOVS.splice(i,1);
+    pintar();
+    $('#avisoMov').className = 'aviso aviso--mal';
+    $('#avisoMov').textContent = 'No se guardó. ' + r.error;
+    $('#btnGuardarMov').disabled = false;
+    $('#btnGuardarMov').textContent = 'Reintentar';
+    return;
+  }
+
+  pintar();
+  $('#formMov').hidden = true;
+  pintarRecibo(mov);
+  $('#btnGuardarMov').hidden = true;
+  $('#btnOtroMov').hidden = false;
+  $('#btnListoMov').hidden = false;
+  $('#avisoMov').className = 'aviso aviso--bien';
+  $('#avisoMov').textContent = 'Guardado. Los tres lo ven ya.';
+};
+
+/* ══════════════════════════════════════════════════════════════
+   NUBE — Firestore
+   Ver ARQUITECTURA.md. Dos reglas que explican todo lo de abajo:
+
+   1. El expediente (documentos, hitos, notas) se trae solo cuando
+      abres el cliente. Las listas se pintan con `resumen`, que viaja
+      en el documento del cliente. Así abrir la consola cuesta ~90
+      lecturas y no ~900.
+   2. `guardar()` no sabe qué cambió, así que comparamos contra un
+      espejo de lo último confirmado y escribimos únicamente la
+      diferencia, en un solo lote.
+   ══════════════════════════════════════════════════════════════ */
+
+const FBCFG = {
+  apiKey:            'AIzaSyBMUYkmzGOI3Ie6fHPVoVH8VPJjkgeeuVQ',
+  authDomain:        'rentas-786af.firebaseapp.com',
+  projectId:         'rentas-786af',
+  storageBucket:     'rentas-786af.firebasestorage.app',
+  messagingSenderId: '1087952571788',
+  appId:             '1:1087952571788:web:7cfd199fce6321f2c15aa9'
+};
+
+const ESPEJO = {clientes:{}, movs:{}};
+const vacioEspejo = () => ({doc:'', plat:'', docs:{}, hitos:{}, notas:{}});
+// Firma de los campos que edita el operador (sin `resumen` ni `sheet`).
+// Es la base para no pisar una edición local con un snapshot en vuelo.
+const platSig = x => firma({
+  paso: x.paso, responsable: x.responsable||'',
+  honorarioManual: x.honorarioManual??null, honorarioFijo: x.honorarioFijo??false,
+  noObligado: x.noObligado??false,
+  tareas: x.tareas||{}
+});
+const espejoDe = ced => ESPEJO.clientes[ced] || (ESPEJO.clientes[ced] = vacioEspejo());
+
+/* ── Período activo (año gravable) ────────────────────────────
+   Toda la operación cuelga de /periodos/{PERIODO}. La identidad del
+   cliente es la cédula, estable entre años; el expediente (paso, papeles,
+   pagos, responsable) es de cada año. Así 2025 queda congelado cuando
+   entre 2026, y nada se pisa. */
+const PERIODOS = ['2025'];          // años disponibles; agregar el próximo aquí
+let PERIODO = localStorage.getItem(LLAVE+':periodo');
+if(!PERIODOS.includes(PERIODO)) PERIODO = PERIODOS[PERIODOS.length-1];
+const refClientes = () => db.collection('periodos').doc(PERIODO).collection('clientes');
+const refMovs     = () => db.collection('periodos').doc(PERIODO).collection('movimientos');
+let unsubClientes = null, unsubMovs = null;
+
+// Quién puede llevar un cliente. El responsable lo edita la plataforma.
+const RESPONSABLES = ['Johanna','Leidy','John'];
+
+// Firma estable de un objeto. JSON.stringify respeta el orden en que se
+// escribieron las claves, y Firestore devuelve los mapas en orden
+// alfabético: comparar con JSON.stringify daba distinto para datos
+// idénticos y reescribía todos los clientes en cada guardado.
+function firma(o){
+  return JSON.stringify(o, (k,v) =>
+    (v && typeof v === 'object' && !Array.isArray(v))
+      ? Object.keys(v).sort().reduce((r,k2)=>{ r[k2]=v[k2]; return r; }, {})
+      : v);
+}
+
+function resumenDe(c){
+  const pag = pagadoDe(c.cedula);
+  const b = c.resumen || {};
+  return {
+    docsTotal:     c._cargado ? c.documentos.length                       : (b.docsTotal||0),
+    docsRecibidos: c._cargado ? c.documentos.filter(d=>d.recibido).length : (b.docsRecibidos||0),
+    docsCompletos: c._cargado ? catsFaltantes(c).length===0               : !!b.docsCompletos,
+    abonado: pag,
+    saldo:   Math.max(0,honorariosDe(c)-pag)
+  };
+}
+
+/* ── Escuchas ─────────────────────────────────────────────── */
+
+function escucharClientes(){
+  if(unsubClientes) unsubClientes();
+  unsubClientes = refClientes().onSnapshot(snap=>{
+    const previos = new Map(CLIENTES.map(c=>[c.cedula,c]));
+    CLIENTES = snap.docs.map(d=>{
+      const dat = d.data(), ant = previos.get(d.id);
+      const e = espejoDe(d.id);
+
+      // Verdad del servidor: campos tal como llegan (sin mezclar con lo local).
+      const srv = {
+        sheet:  dat.sheet || {nombre:'',correo:'',vence:'',honorarios:0,grupo:''},
+        paso:   dat.paso || 1,
+        responsable: dat.responsable || '',
+        honorarioManual: dat.honorarioManual ?? null,
+        honorarioFijo:   dat.honorarioFijo ?? false,
+        noObligado:      dat.noObligado ?? false,
+        tareas:  dat.tareas || {},
+        resumen: dat.resumen || null
+      };
+
+      // Reconciliación SOLO sobre los campos que edita el operador (paso,
+      // responsable, honorarios, tareas). Se excluye `resumen` (es derivado y
+      // cambia solo) y `sheet` (lo escribe el sincronizador): si entraran aquí,
+      // ensuciarían la comparación y el chulito se re-marcaría solo.
+      // `e.plat` = última versión de esos campos CONFIRMADA con el servidor.
+      const platServidor = platSig(srv);
+      const edicionLocalPendiente = !!ant && e.plat !== '' && platSig(ant) !== e.plat;
+
+      // El espejo de plataforma solo avanza cuando tomamos la verdad del
+      // servidor. Si conservamos la edición local, se deja como está para que
+      // escribirDiferencia detecte la diferencia y la persista.
+      if(!edicionLocalPendiente){ e.plat = platServidor; e.doc = firma(srv); }
+
+      const base = edicionLocalPendiente ? ant : srv;
+      return {
+        cedula: d.id,
+        // `sheet` siempre es del servidor (lo escribe el sincronizador).
+        sheet:  srv.sheet,
+        paso:   base.paso,
+        responsable: base.responsable || '',
+        honorarioManual: base.honorarioManual ?? null,
+        honorarioFijo:   base.honorarioFijo ?? false,
+        noObligado:      base.noObligado ?? false,
+        tareas:  base.tareas || {},
+        resumen: edicionLocalPendiente ? ant.resumen : srv.resumen,
+        // El expediente (subcolecciones) se conserva si ya lo habíamos traído.
+        documentos: ant?.documentos || [],
+        hitos:      ant?.hitos      || {},
+        notas:      ant?.notas      || [],
+        _cargado:   !!ant?._cargado
+      };
+    });
+    refrescarSelectClientes();
+    refrescar();
+  }, e=> brindis('No pude leer los clientes: '+e.message));
+}
+
+function escucharMovimientos(){
+  if(unsubMovs) unsubMovs();
+  unsubMovs = refMovs().onSnapshot(snap=>{
+    MOVS = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    ESPEJO.movs = {};
+    MOVS.forEach(m=>{ const {id,...cuerpo}=m; ESPEJO.movs[id] = firma(cuerpo); });
+    refrescar();
+  }, e=> brindis('No pude leer los movimientos: '+e.message));
+}
+
+/* Cambiar de año: corta las escuchas, limpia memoria y espejo (que apunta
+   al período anterior) y vuelve a suscribir contra el nuevo período. */
+function cambiarPeriodo(p){
+  if(p===PERIODO || !PERIODOS.includes(p)) return;
+  PERIODO = p;
+  localStorage.setItem(LLAVE+':periodo', p);
+  CLIENTES = []; MOVS = [];
+  ESPEJO.clientes = {}; ESPEJO.movs = {};
+  cedulaActual = null;
+  escucharClientes(); escucharMovimientos();
+  location.hash = '#/vencer';
+  brindis(`Período ${p}.`);
+}
+
+function poblarSelectorPeriodo(){
+  const sel = $('#selPeriodo'); if(!sel) return;
+  sel.innerHTML = PERIODOS.map(p=>`<option value="${p}"${p===PERIODO?' selected':''}>${p}</option>`).join('');
+  sel.onchange = ()=> cambiarPeriodo(sel.value);
+}
+
+
+/* ── Expediente bajo demanda ──────────────────────────────── */
+
+const cargando = new Set();
+async function cargarExpediente(c){
+  if(c._cargado || cargando.has(c.cedula)) return;
+  const ced = c.cedula;
+  cargando.add(ced);
+  try{
+    const ref = refClientes().doc(ced);
+    const [ds,hs,ns] = await Promise.all([
+      ref.collection('documentos').get(),
+      ref.collection('hitos').get(),
+      ref.collection('notas').get()
+    ]);
+    // Mientras se leía pudo entrar un snapshot: `escucharClientes` reconstruye
+    // CLIENTES con objetos NUEVOS, y `c` quedaría siendo un huérfano. Volcar el
+    // expediente ahí dejaba al objeto vigente con `documentos:[]` y
+    // `_cargado:false` para siempre: la sección de documentos se veía vacía y
+    // los switches que marcaras no se escribían. Se vuelve a resolver por cédula.
+    c = CLIENTES.find(x=>x.cedula===ced) || c;
+
+    c.documentos = ds.docs.map(d=>({id:d.id, ...d.data()}));
+    c.hitos = {}; hs.docs.forEach(d=>{ c.hitos[d.id] = d.data(); });
+    c.notas = ns.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>String(a.creado).localeCompare(String(b.creado)));
+    c._cargado = true;
+
+    // El espejo refleja lo que hay en Firestore, así que se apunta ANTES
+    // de sembrar las categorías: si sembramos, queremos que se escriban.
+    const e = espejoDe(c.cedula);
+    e.docs = {}; c.documentos.forEach(d=>{ const {id,...b}=d; e.docs[id]=firma(b); });
+    e.hitos = {}; Object.entries(c.hitos).forEach(([k,v])=>{ e.hitos[k]=firma(v); });
+    e.notas = {}; c.notas.forEach(n=>{ const {id,...b}=n; e.notas[id]=firma(b); });
+
+    if(!c.documentos.length){ c.documentos = docsNuevos(); guardar(); }
+    if(cedulaActual===c.cedula) pintarCliente(c);
+  }catch(err){
+    brindis('No pude abrir el expediente: '+err.message);
+  }finally{
+    cargando.delete(c.cedula);
+  }
+}
+
+/* ── Escritura: solo la diferencia ────────────────────────── */
+
+// Devuelve una promesa que se resuelve cuando Firestore CONFIRMA la
+// escritura. Antes esto no devolvía nada y la pantalla cantaba
+// "83 clientes importados" antes de que el servidor hubiera contestado:
+// si el lote fallaba, el mensaje de éxito ya estaba dado.
+let guardadoPendiente = null, guardadoProm = null, resolverGuardado = null;
+// Las escrituras van en fila india. Dos `escribirDiferencia` a la vez comparan
+// contra el mismo espejo —que solo avanza cuando la tanda pasa— y vuelven a
+// mandar lo mismo: durante una importación eso duplicaba las tandas, y entre
+// eso y los snapshots que cada tanda dispara la pantalla se quedaba pensando.
+let escrituraEnVuelo = Promise.resolve();
+function guardarNube(){
+  if(!guardadoProm) guardadoProm = new Promise(r => { resolverGuardado = r; });
+  const prom = guardadoProm;
+  clearTimeout(guardadoPendiente);
+  guardadoPendiente = setTimeout(()=>{
+    const resolver = resolverGuardado;
+    guardadoProm = null; resolverGuardado = null;
+    escrituraEnVuelo = escrituraEnVuelo.then(()=>escribirDiferencia()).then(
+      r => resolver(r),
+      // Si `escribirDiferencia` reventaba por algo no previsto, nadie resolvía
+      // esta promesa: el botón se quedaba en «Guardando…» y la ventana muerta.
+      err => {
+        console.error('[rentas] escritura fallida', err);
+        const texto = 'No se pudo guardar: ' + (err?.message || err);
+        alarma(texto);
+        resolver({ok:false, n:0, hechos:0, error:texto});
+      });
+  }, 250);
+  return prom;
+}
+
+/* Firestore permite 20 lecturas de reglas por petición. Cada escritura
+   evalúa las reglas, que leen /usuarios una vez. Un lote de 86 clientes
+   pedía 86 lecturas y el servidor rechazaba el lote COMPLETO: por eso la
+   importación nunca entraba y los cambios sueltos sí. Vamos de a 8. */
+const POR_TANDA = 8;
+
+async function escribirDiferencia(){
+  if(!NUBE || !USUARIO) return;
+  // Cada operación se guarda suelta y se reparte en tandas al final.
+  const ops = [];
+  const lote = {
+    set:    (ref, datos, opciones) => ops.push({tipo:'set', ref, datos, opciones}),
+    delete: (ref)                  => ops.push({tipo:'delete', ref})
+  };
+  let n = 0;
+  // El espejo solo se mueve si la tanda pasa. Antes lo movíamos al armarlo,
+  // y un fallo dejaba la memoria diciendo que ya estaba guardado.
+  const alConfirmar = [];
+  const sello = { actualizado: firebase.firestore.FieldValue.serverTimestamp(), actualizadoPor: USUARIO.uid };
+
+  for(const c of CLIENTES){
+    const e = espejoDe(c.cedula);
+    const ref = refClientes().doc(c.cedula);
+
+    if(c._cargado){
+      // documentos
+      for(const d of c.documentos){
+        const {id, ...cuerpo} = d, j = firma(cuerpo);
+        if(e.docs[id] !== j){ lote.set(ref.collection('documentos').doc(id), cuerpo); alConfirmar.push(()=>{e.docs[id]=j}); n++; }
+      }
+      for(const id of Object.keys(e.docs)){
+        if(!c.documentos.some(d=>d.id===id)){ lote.delete(ref.collection('documentos').doc(id)); alConfirmar.push(()=>{delete e.docs[id]}); n++; }
+      }
+      // hitos
+      for(const [k,v] of Object.entries(c.hitos)){
+        const j = firma(v);
+        if(e.hitos[k] !== j){ lote.set(ref.collection('hitos').doc(String(k)), v); alConfirmar.push(()=>{e.hitos[k]=j}); n++; }
+      }
+      for(const k of Object.keys(e.hitos)){
+        if(!(k in c.hitos)){ lote.delete(ref.collection('hitos').doc(String(k))); alConfirmar.push(()=>{delete e.hitos[k]}); n++; }
+      }
+      // notas
+      for(const nt of c.notas){
+        const {id, ...cuerpo} = nt, j = firma(cuerpo);
+        if(e.notas[id] !== j){ lote.set(ref.collection('notas').doc(id), cuerpo); alConfirmar.push(()=>{e.notas[id]=j}); n++; }
+      }
+      for(const id of Object.keys(e.notas)){
+        if(!c.notas.some(x=>x.id===id)){ lote.delete(ref.collection('notas').doc(id)); alConfirmar.push(()=>{delete e.notas[id]}); n++; }
+      }
+    }
+
+    c.resumen = resumenDe(c);
+    const cuerpo = {sheet:c.sheet, paso:c.paso, responsable:c.responsable||'', honorarioManual:c.honorarioManual??null, honorarioFijo:c.honorarioFijo??false, noObligado:c.noObligado??false, tareas:c.tareas||{}, resumen:c.resumen};
+    const j = firma(cuerpo);
+    if(e.doc !== j){ const ps = platSig(c); lote.set(ref, {...cuerpo, ...sello}, {merge:true}); alConfirmar.push(()=>{ e.doc=j; e.plat=ps; }); n++; }
+  }
+
+  for(const m of MOVS){
+    const {id, ...cuerpo} = m, j = firma(cuerpo);
+    if(ESPEJO.movs[id] !== j){ lote.set(refMovs().doc(id), {...cuerpo, creadoPor:USUARIO.uid}, {merge:true}); alConfirmar.push(()=>{ESPEJO.movs[id]=j}); n++; }
+  }
+  for(const id of Object.keys(ESPEJO.movs)){
+    if(!MOVS.some(m=>m.id===id)){ lote.delete(refMovs().doc(id)); alConfirmar.push(()=>{delete ESPEJO.movs[id]}); n++; }
+  }
+
+  if(!n) return {ok:true, n:0};
+
+  let hechos = 0;
+  for(let i=0; i<ops.length; i+=POR_TANDA){
+    const tanda = ops.slice(i, i+POR_TANDA);
+    const lot = db.batch();
+    for(const o of tanda){
+      if(o.tipo==='delete') lot.delete(o.ref);
+      else if(o.opciones)   lot.set(o.ref, o.datos, o.opciones);
+      else                  lot.set(o.ref, o.datos);
+    }
+    try{
+      await lot.commit();
+      alConfirmar.slice(i, i+POR_TANDA).forEach(f=>f());
+      hechos += tanda.length;
+    }catch(err){
+      console.error('[rentas] falló la tanda', Math.floor(i/POR_TANDA)+1, 'de', Math.ceil(ops.length/POR_TANDA), err);
+      // Un aviso que se va en tres segundos hace que un fallo de guardado
+      // parezca un capricho de la pantalla. Este se queda hasta que lo cierres.
+      const texto = err.code==='permission-denied'
+        ? `Se guardaron ${hechos} de ${n} cambios. El servidor rechazó el resto por permisos: para escribir datos del Sheet tu usuario necesita rol admin.`
+        : `Se guardaron ${hechos} de ${n} cambios. ${err.code||''} ${err.message}`;
+      alarma(texto);
+      return {ok:false, n, hechos, error:texto};
+    }
+  }
+  return {ok:true, n:hechos};
+}
+
+// Aviso que no se va solo. Para lo que no se puede perder de vista.
+function alarma(texto){
+  let a = $('#alarma');
+  if(!a){
+    a = document.createElement('div');
+    a.id = 'alarma'; a.className = 'alarma'; a.setAttribute('role','alert');
+    document.body.appendChild(a);
+  }
+  a.innerHTML = `<span>${esc(texto)}</span><button type="button" aria-label="Cerrar">✕</button>`;
+  a.querySelector('button').onclick = ()=> a.remove();
+}
+
+/* ── Compuerta ────────────────────────────────────────────── */
+
+function entrarModoLocal(motivo){
+  NUBE = false;
+  $('#compuerta').hidden = true;
+  $('#app').hidden = false;
+  $('#cuenta').textContent = 'sin conexión · local';
+  if(!cargar()) demo();
+  refrescarSelectClientes(); enrutar();
+  if(motivo) brindis(motivo);
+}
+
+function arrancarNube(){
+  firebase.initializeApp(FBCFG);
+  auth = firebase.auth();
+  db   = firebase.firestore();
+
+  const err = $('#errEntrar'), btn = $('#btnEntrar');
+
+  $('#fEntrar').onsubmit = async e=>{
+    e.preventDefault();
+    err.textContent = ''; btn.disabled = true; btn.textContent = 'Entrando…';
+    try{
+      await auth.signInWithEmailAndPassword($('#inCorreo').value.trim(), $('#inClave').value);
+    }catch(ex){
+      err.textContent = {
+        'auth/invalid-credential': 'Correo o contraseña incorrectos.',
+        'auth/invalid-email':      'Ese correo no tiene forma de correo.',
+        'auth/user-disabled':      'Esa cuenta está deshabilitada.',
+        'auth/too-many-requests':  'Demasiados intentos. Espera un momento.',
+        'auth/network-request-failed': 'Sin conexión.'
+      }[ex.code] || ('No pude entrar: '+ex.message);
+    }finally{
+      btn.disabled = false; btn.textContent = 'Entrar';
+      $('#inClave').value = '';
+    }
+  };
+
+  $('#btnSalir').onclick = ()=>{ auth.signOut(); location.reload(); };
+
+  auth.onAuthStateChanged(async u=>{
+    if(!u){
+      USUARIO = PERFIL = null; NUBE = false;
+      $('#app').hidden = true; $('#compuerta').hidden = false;
+      return;
+    }
+    let perfil = null;
+    try{ perfil = (await db.collection('usuarios').doc(u.uid).get()).data() || null; }catch(ex){ /* reglas */ }
+
+    if(!perfil || perfil.activo !== true){
+      await auth.signOut();
+      $('#errEntrar').textContent =
+        `La cuenta ${u.email} entró, pero no está autorizada en la consola. Pídele a un administrador que la habilite (UID ${u.uid}).`;
+      return;
+    }
+
+    USUARIO = u; PERFIL = perfil; NUBE = true;
+    // Al entrar se abre siempre por los vencimientos, no por donde se
+    // quedó la sesión anterior: es lo que hay que mirar cada mañana.
+    // OJO: asignar `location.hash` solo dispara `hashchange` si el hash CAMBIA.
+    // Al recargar estando ya en #/vencer —o sin hash— no se disparaba y
+    // `enrutar()` no llegaba a correr nunca: la cabecera se quedaba con el
+    // botón «Importar del Sheet» del HTML, sin `onclick`, y no hacía nada hasta
+    // que cambiabas de pestaña (eso sí navega y cablea). Por eso ahora se llama
+    // a mano más abajo, después de dejar la sesión lista.
+    if(location.hash && location.hash !== '#/vencer') location.hash = '#/vencer';
+    $('#compuerta').hidden = true;
+    $('#app').hidden = false;
+    $('#cuenta').innerHTML = `<span class="cuenta__n">${esc(perfil.nombre || u.email)}</span><button type="button" class="cuenta__salir" id="btnSalir2">Salir</button>`;
+    $('#btnSalir2').onclick = ()=>{ auth.signOut(); location.reload(); };
+    if($('#btnDemo')) $('#btnDemo').hidden = true;   // con datos reales no hay muestra que valga
+
+    poblarSelectorPeriodo();
+    enrutar();                 // cablea la cabecera y pinta, haya cambiado el hash o no
+    escucharClientes();
+    escucharMovimientos();
+  });
+}
+
+/* ── Datos de muestra ─────────────────────────────────────── */
+function demo(){
+  const base = [
+    ['10000001','Marina Salgado Ríos','marina@example.com','A',5,[1,1,1,1,1,1],380000,[['Johanna','2026-07-14','Radicada. Saldo a favor de $412.000.',5]]],
+    ['10000067','Camilo Salgado Ríos','camilo@example.com','A',5,[1,1,1,1,1,1],380000,[['Leidy','2026-07-15','Se le envió cuenta de cobro. Paga el viernes.',6]]],
+    ['10000006','Gustavo Melo Arias','gustavo@example.com','',3,[1,1,0,1,0,1],450000,[['cliente','2026-07-18','El banco no me ha dado el certificado de retenciones.',3]]],
+    ['10000004','Andrea Quiroz Lara','andrea@example.com','',2,[1,0,0,0,0,0],320000,[]],
+    ['10000019','Jorge Prieto Rueda','jorge@example.com','B',4,[1,1,1,1,1,1],520000,[['Johanna','2026-07-19','Hay una finca sin avalúo actualizado.',4]]],
+    ['10000077','Marta Rueda de Prieto','marta@example.com','B',4,[1,1,1,0,1,1],520000,[]],
+    ['1000000066','Daniel Otero Vidal','daniel@example.com','',1,[0,0,0,0,0,0],0,[['Leidy','2026-07-20','Invitación enviada, no ha abierto el cotizador.',1]]],
+    ['10000043','Claudia Henao Bravo','claudia@example.com','',3,[1,1,1,0,1,0],410000,[['cliente','2026-07-17','¿Necesitan el predial del apartamento de mi mamá?',3]]],
+    ['10000082','Álvaro Renjifo Soto','alvaro@example.com','',6,[1,1,1,1,1,1],600000,[]],
+    ['10000081','Paola Serna Mejía','paola@example.com','',2,[1,1,0,0,0,0],350000,[]],
+    ['10000005','Héctor Valbuena Cruz','hector@example.com','',5,[1,1,1,1,1,1],470000,[['Johanna','2026-07-08','Saldo a pagar $1.240.000. Ya tiene el recibo.',5]]],
+    ['10000018','Nubia Cortés Rivas','nubia@example.com','',3,[1,0,1,1,0,1],390000,[]]
+  ];
+  CLIENTES = base.map(([cedula,nombre,correo,grupo,paso,docs,honorarios,notas])=>{
+    // Documentos de muestra: los universales más un par de categorías típicas,
+    // para que el expediente demo se vea como uno real ya con respuestas.
+    const documentos = docsNuevos();
+    ['Certificado de ingresos y retenciones (laboral)','Certificados bancarios / de rendimientos (CDT)']
+      .forEach(cat=> documentos.push({id:idNuevo('d'), categoria:cat, nombre:'', recibido:0, nota:''}));
+    documentos.forEach((d,i)=>{ d.recibido = paso>=4 ? 1 : (i < Math.ceil(documentos.length/2) ? 1 : 0); });
+    const hitos = {};
+    for(let k=1;k<paso;k++) hitos[k] = {fecha:'2026-07-0'+Math.min(9,k)};
+    return {
+      cedula,
+      sheet:{nombre,correo,vence:'',honorarios,grupo},
+      paso, documentos, hitos,
+      notas: notas.map(([autor,creado,texto,np])=>({
+        id:idNuevo('n'), texto, paso:np, origen:autor==='cliente'?'cliente':'equipo',
+        autor:autor==='cliente'?null:autor, creado
+      }))
+    };
+  });
+  // Un caso desagregado, para que se vea de qué se trata
+  const gustavo = CLIENTES.find(c=>c.cedula==='10000006');
+  const CAT_BANCOS = 'Certificados bancarios / de rendimientos (CDT)';
+  const banc = gustavo.documentos.find(d=>d.categoria===CAT_BANCOS);
+  banc.nombre = 'Banco Davivienda'; banc.recibido = 1;
+  gustavo.documentos.push(
+    {id:idNuevo('d'), categoria:CAT_BANCOS, nombre:'Banco AV Villas', recibido:1, nota:''},
+    {id:idNuevo('d'), categoria:CAT_BANCOS, nombre:'Bancolombia',     recibido:0, nota:''}
+  );
+
+  MOVS = [
+    {id:'m1',fecha:'2026-07-15',cedula:'10000001',monto:380000,quien:'Johanna',medio:'Bancolombia',referencia:'Transferencia',conciliado:true},
+    {id:'m2',fecha:'2026-07-02',cedula:'10000082',monto:600000,quien:'Leidy',  medio:'Nequi',      referencia:'',             conciliado:true},
+    {id:'m3',fecha:'2026-07-18',cedula:'10000005',monto:200000,quien:'John',   medio:'Davivienda', referencia:'Abono 1 de 2', conciliado:false}
+  ];
+}
+$('#btnDemo').onclick = ()=>{ demo(); refrescarSelectClientes(); guardar(); enrutar(); cerrarModal(); brindis('Datos de muestra cargados.'); };
+
+/* La compuerta dice en qué punto de la temporada estás antes de entrar.
+   Es lo primero que ven cada mañana; que diga algo verdadero. */
+(function estadoDeLaTemporada(){
+  const hoy  = CALENDARIO_DIAN.find(t=>t.fecha===hoyISO());
+  const prox = CALENDARIO_DIAN.find(t=>diasA(t.fecha)>=0);
+  const fin  = CALENDARIO_DIAN[CALENDARIO_DIAN.length-1];
+  let texto;
+  if(hoy)        texto = `Hoy vencen las cédulas terminadas en <b>${parDigitos(hoy)}</b>.`;
+  else if(!prox) texto = `La temporada cerró el <b>${fCorta(fin.fecha)}</b>.`;
+  else{
+    const d = diasA(prox.fecha);
+    texto = `Siguiente vencimiento: <b>${parDigitos(prox)}</b>, el ${fCorta(prox.fecha)}`
+          + (d===0 ? ' — hoy.' : d===1 ? ' — mañana.' : ` — en ${d} días.`);
+  }
+  $('#compuertaHoy').innerHTML = texto;
+})();
+
+// Sello de versión: sirve para confirmar, a simple vista y en consola, qué
+// build está cargado (y descartar que sea una copia vieja en caché).
+const BUILD = 'v12 · 2026-08-10 · Correo de faltantes · semanas y etapas';
+try{ const lb = document.getElementById('logoBuild'); if(lb) lb.textContent = BUILD; }catch(_){}
+console.log('%cRentas build '+BUILD, 'color:#5b8;font-weight:bold');
+
+// Si el SDK no cargó (sin red, o abierto con file://) la consola sigue
+// sirviendo contra localStorage en vez de quedarse en blanco.
+if(typeof firebase === 'undefined'){
+  entrarModoLocal('Sin conexión con Firebase: estás trabajando en local.');
+}else{
+  arrancarNube();
+}
+</script>
+</body>
+</html>

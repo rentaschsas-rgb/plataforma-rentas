@@ -1,0 +1,104 @@
+rules_version = '2';
+
+// Plataforma Rentas — CH S.A.S.
+// Regla que gobierna todo: un dueño por campo (ver ARQUITECTURA.md §1).
+// El mapa `sheet` lo escribe solo el sincronizador (cuenta de servicio,
+// que omite estas reglas). Desde el navegador es intocable.
+
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    // Una sola lectura de /usuarios por operación, no tres.
+    // Firestore permite 20 lecturas de este tipo por petición, y un lote
+    // de 86 clientes hace una evaluación por cliente: con exists() + dos
+    // get() se pasaba del límite y rechazaba el lote entero.
+    // Si el documento no existe, get() devuelve null y la regla falla,
+    // que es exactamente lo que queremos. exists() sobraba.
+    function perfil() {
+      return get(/databases/$(db)/documents/usuarios/$(request.auth.uid)).data;
+    }
+    function activo() {
+      return request.auth != null && perfil().activo == true;
+    }
+    function esAdmin() {
+      return request.auth != null && perfil().rol == 'admin';
+    }
+
+    // ── Lista blanca ────────────────────────────────────────────
+    match /usuarios/{uid} {
+      allow read:  if activo();
+      allow write: if esAdmin();
+    }
+
+    // ── Configuración compartida ────────────────────────────────
+    match /config/{doc} {
+      allow read:  if activo();
+      allow write: if esAdmin();
+    }
+
+    // ── Operación por período (año gravable) ────────────────────
+    // La operación cuelga de /periodos/{año}. Mismas reglas que la
+    // estructura anterior, pero cada año es su propio expediente, así
+    // 2025 queda intacto cuando entre 2026. `responsable` es territorio
+    // de la plataforma, así que un operador puede cambiarlo (no toca `sheet`).
+    match /periodos/{periodo} {
+      allow read:  if activo();
+      allow write: if esAdmin();
+
+      match /clientes/{cedula} {
+        allow read: if activo();
+        allow update: if esAdmin()
+          || (activo() && request.resource.data.get('sheet', null) == resource.data.get('sheet', null));
+        allow create: if esAdmin();
+        allow delete: if false;
+
+        match /{sub=**} {
+          allow read, write: if activo();
+        }
+      }
+
+      match /movimientos/{id} {
+        allow read, create, update: if activo();
+        allow delete: if esAdmin();
+      }
+    }
+
+    // ── Clientes (estructura anterior — se conserva de respaldo) ─
+    match /clientes/{cedula} {
+      allow read: if activo();
+
+      // Un operador puede mover el proceso, pero `sheet` le es intocable:
+      // ni cambiarlo, ni borrarlo, ni inventarlo.
+      // El admin sí puede, porque es quien corre la importación del Sheet.
+      allow update: if esAdmin()
+        || (activo() && request.resource.data.get('sheet', null) == resource.data.get('sheet', null));
+
+      // Dar de alta un cliente es importar; borrarlo, nunca desde la app.
+      allow create: if esAdmin();
+      allow delete: if false;
+
+      // documentos, hitos y notas: territorio de la plataforma.
+      match /{sub=**} {
+        allow read, write: if activo();
+      }
+    }
+
+    // ── Movimientos bancarios ───────────────────────────────────
+    match /movimientos/{id} {
+      allow read, create, update: if activo();
+      // Borrar un movimiento descuadra la conciliación: solo admin.
+      allow delete: if esAdmin();
+    }
+
+    // ── Bitácora de sincronización: se lee, no se escribe ───────
+    match /sincronizaciones/{id} {
+      allow read:  if activo();
+      allow write: if false;
+    }
+
+    // Todo lo demás, cerrado.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
