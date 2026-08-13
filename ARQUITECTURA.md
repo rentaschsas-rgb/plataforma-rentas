@@ -11,7 +11,7 @@ La sincronización bidireccional sobre el mismo campo es la forma más rápida d
 | Dato | Dueño | Quién puede escribirlo |
 |---|---|---|
 | cédula, nombre, correo, vence, valor 2025 | **Sheet** `elaborar` | solo el sincronizador |
-| paso, documentos, comentarios, pagos, **responsable**, **tareas** | **Plataforma** | los usuarios activos |
+| paso, documentos, comentarios, pagos, **responsable**, **tareas**, **cifras** | **Plataforma** | los usuarios activos |
 | espejo del proceso en el Sheet | Plataforma | solo el sincronizador (columnas de solo lectura para el humano) |
 
 Consecuencia práctica: **reimportar nunca pisa el proceso**, y editar el Sheet nunca pisa un comentario. Esta regla se hace cumplir en las reglas de seguridad, no solo por convención (§6).
@@ -100,6 +100,14 @@ Un único documento con lo que hoy son constantes en el código. Ponerlo aquí e
     "Colorear reporte": true,
     "Tomar pantallazos": true
   },
+  cifras: {                         // cuadro del correo de presentación
+    inga: 260000000, ingb: 290000000,   // «a» = año gravable anterior
+    pata: 125000000, patb: 145000000,   // «b» = año gravable del período
+    impa:  38000000, impb:  33000000,
+    reta:  35000000, retb:  40000000,
+    sala: "", salb: "",              // vacío = se deduce (retenciones − impuesto)
+    adj: {0:true, 1:true, 2:true, 3:false}   // qué adjuntos se nombran
+  },
 
   // ── Derivados (los mantiene la Cloud Function) ───────
   resumen: {
@@ -141,6 +149,7 @@ Una categoría está completa cuando **todos** sus ítems tienen `recibido: true
 **Listas de chequeo por paso.** Un paso puede tener tareas internas que cumplir (`CHECKLIST_PASO`), guardadas por cliente en `tareas`. Hoy:
 - **Documentos:** colorear reporte, tomar pantallazos, verificar documentos contra reporte, verificar contra pantallazos, solicitar faltantes. La tarea *Colorear reporte* muestra un tooltip con la guía de colores (`GUIA_COLORES`): verde = saldos de bancos, amarillo = ingresos, morado = patrimonio, azul = retenciones.
 - **Elaboración:** ingresar papeles al ayuda renta, verificar valores contra reporte.
+- **Presentado:** borrador generado, presentada ante la DIAN, correo de presentación enviado al cliente. Los tres momentos que se confundían en uno: tener el borrador armado no es haberla radicado, y radicarla no es habérselo contado al cliente. El tercero **se marca solo** al abrir Gmail desde el bloque *Correo de presentación* (`TAREA_CORREO_PRES`), igual que *Solicitar documentos faltantes*.
 
 Las respuestas viven en una hoja aparte del Sheet, **RESPUESTAS** (una fila por renta, escrita por el cotizador; los valores son «Sí»/«No»). Como el mapa `sheet` es territorio del Sheet y las reglas prohíben que el navegador lo toque, las respuestas **no** se guardan en el cliente: se traducen directo a documentos. El flujo es el botón **«Actualizar desde RESPUESTAS»** del modal de importar — se pega la hoja RESPUESTAS, se cruza por cédula contra los clientes ya importados, y para cada uno se **agregan** las categorías que falten sin tocar nada ya recibido (`fusionarDocs`). Es idempotente: volver a pegar no duplica. Como los documentos solo se sincronizan con el expediente cargado, el proceso trae en tandas los expedientes que falten antes de mezclar.
 
@@ -150,7 +159,7 @@ Además, **si quien lo corre es admin**, ese mismo flujo **pisa el honorario** c
 
 Nota: la columna **RESPONSABLE** de `elaborar` es un `TRUE`/`FALSE` (marca de contacto del grupo), **no** un nombre; por eso `responsable` **no** se hereda del Sheet ni en la importación ni en la migración: arranca vacío y se asigna en la plataforma.
 
-**Recordatorio de documentos: se envía solo.** El bloque *Documentos* del expediente trae el botón **«Enviar recordatorio»**. El correo lo manda el **Apps Script del Sheet** (`recordatorioDocumentos` en `apps_script.js`), no el navegador: la consola es un HTML estático y no puede enviar correo. Sale con el mismo vestido y desde la misma cuenta que la invitación del cotizador, con **copia a `rentas.chsas`**. Lleva, en este orden: los **días que faltan** (o los que lleva vencido, en rojo), la lista de lo pendiente, y el **cargo por entrega tardía**.
+**Recordatorio de documentos: se envía solo.** El bloque *Documentos* del expediente trae el botón **«Enviar recordatorio»**. El correo lo manda el **Apps Script del Sheet** (`recordatorioDocumentos` en `apps_script.js`), no el navegador: la consola es un HTML estático y no puede enviar correo. Sale con el mismo vestido y desde la misma cuenta que la invitación del cotizador (`rentas.chsas`), **sin copia**: el envío queda en «Enviados» de esa cuenta, que es donde se verifica, y copiarse a sí misma solo llenaba la bandeja. Lleva, en este orden: los **días que faltan** (o los que lleva vencido, en rojo), la lista de lo pendiente, y el **cargo por entrega tardía**.
 
 - La lista nombra la **categoría**, y si dentro de ella ya llegó algo, aclara entre paréntesis qué falta (`Certificados bancarios (Bancolombia)`): pedir la categoría entera hacía que el cliente reenviara lo que ya había mandado.
 - El **nombre va completo**. En la hoja está como «APELLIDO1 APELLIDO2 NOMBRE», así que saludar por la primera palabra saluda por el apellido (`nombreLargo`, no `primerNombre`).
@@ -162,9 +171,20 @@ Nota: la columna **RESPONSABLE** de `elaborar` es un `TRUE`/`FALSE` (marca de co
 
 1. **El destinatario no viaja en la petición**: se busca por cédula en `elaborar`. El endpoint no sirve para escribirle a nadie que no sea ya cliente.
 2. **El texto tampoco viaja**: se arma en el servidor. De afuera solo entra *cuáles* documentos faltan, validados contra el catálogo `CATEGORIAS_DOC` (que debe seguir a `ORDEN_CAT` de `index.html`).
-3. **Copia a la oficina en cada envío y tope diario** (`TOPE_RECORDATORIOS_DIA`, 60 — Gmail gratis da 100 destinatarios/día). Un abuso se ve el mismo día y se corta solo.
+3. **Tope diario** (`TOPE_RECORDATORIOS_DIA`, 60 — Gmail gratis da 100 destinatarios/día). Como el correo sale de `rentas.chsas`, cada envío queda en «Enviados» de esa cuenta: un abuso se ve el mismo día y el tope lo corta solo.
 
 El `token` compartido es un cerrojo de cortesía: la consola es HTML público y quien la lea puede sacarlo. Lo que protege de verdad son los tres puntos de arriba.
+
+### Correo de presentación — el que cierra el proceso
+
+Bloque **«Correo de presentación»** del expediente. Va con la declaración firmada y radicada, los anexos, y un **cuadro que compara el año gravable anterior con el actual**. Ese cuadro es lo que el cliente de verdad lee («¿por qué pagué más que el año pasado?»), así que la variación **se calcula en la plataforma** y no a mano en Gmail, que es donde se colaban los errores de resta y de porcentaje.
+
+- Se teclean cinco conceptos por año —**ingresos brutos, patrimonio bruto, impuesto a cargo, retenciones y saldo final**— y se guardan en `cifras` (sufijo `a` = año anterior, `b` = el del período). Son territorio de la plataforma: reimportar el Sheet no los toca, y quedan para el año siguiente y para reenviar el correo sin volver a teclearlos.
+- **El saldo final se deduce solo**: `retenciones − impuesto a cargo` (positivo, a favor; negativo, a pagar). Se muestra de marca de agua y se puede escribir encima cuando hay anticipos o sanciones que esa resta no ve.
+- La **variación** es la diferencia con flecha y el porcentaje **sobre el valor absoluto** del año anterior: cuando el saldo pasa de *a pagar* a *a favor*, dividir por un negativo daba el porcentaje con el signo al revés.
+- Los **honorarios pendientes** no se escriben otra vez: salen del saldo del bloque *Cobro*. La cuenta para consignar es la misma para todos y vive en la constante `CUENTA_PAGO`; **si está vacía, el borrador deja un hueco rojo visible** en vez de callárselo.
+- **La plataforma no lo envía**, a diferencia del recordatorio: los adjuntos son archivos del computador y ningún backend los tiene. Se genera el borrador con formato, **«Copiar con formato»** lo deja en el portapapeles como `text/html` (Gmail pega la tabla tal cual) y **«Abrir en Gmail»** abre la ventana de redacción con destinatario y asunto puestos —el cuerpo no viaja en la URL porque ahí solo cabe texto plano y se perdería el cuadro—. Ahí se adjunta y se envía a mano.
+- Abrir Gmail deja **constancia** en el paso *Presentado*: a quién, con qué saldo y qué adjuntos. El correo se manda a mano, y tres semanas después nadie se acuerda de si salió.
 
 ### El cargo por entrega tardía — `$70.000`
 
@@ -175,7 +195,8 @@ El correo dice «**el acuerdo que usted aceptó**», nunca «el contrato»: desd
 - Se aplica **en el mismo acto en que se le avisa**, nunca antes: el correo que sale le dice al cliente que se le está cobrando. Cobrar en silencio sería peor que no cobrar.
 - La condición es *pasó la fecha de entrega* **y** *siguen faltando papeles*. La decide el **servidor** (tiene la fecha del Sheet, que es la buena) y la devuelve en `recargo`; la plataforma la obedece.
 - Se cobra **una sola vez**, aunque se le insista después.
-- Vive en `recargoDocs` (monto) y `recargoDocsFecha`. Un **admin** puede quitarlo con el ↺ del bloque *Cobro*, y queda anotado: perdonar $70.000 es una decisión de la que alguien va a preguntar.
+- Vive en `recargoDocs` (monto) y `recargoDocsFecha`. Un **admin** lo pone y lo quita con la **casilla del bloque *Cobro*** (`data-recargo`), y los dos sentidos quedan anotados: cobrar $70.000 —o perdonarlos— es una decisión de la que alguien va a preguntar.
+- La casilla existe porque el aviso no siempre sale por correo desde aquí: muchas veces se le dice por **WhatsApp o por teléfono** y el cliente hace caso omiso. Ahí el cargo es igual de legítimo, pero nadie lo aplicó automáticamente. La casilla solo la ve un admin; los demás ven el cargo como texto cuando existe.
 - **`honorariosDe` sigue siendo solo el precio**; lo que se debe es **`cobroDe` = honorarios + cargo**, y es lo que usan el saldo, la cartera, la vista de pagos y el recibo. Separarlos evita que editar los honorarios a mano se coma el cargo, o que el cargo se duplique al reimportar.
 
 #### `/clientes/{cedula}/hitos/{n}`
@@ -259,7 +280,7 @@ Con 86 clientes cabe leer la colección entera de una vez y filtrar en el navega
 
 ### Sheet → Firestore (datos del cliente)
 
-Un disparador en Apps Script que, al editar `elaborar` y también una vez al día, escribe con `merge` **solo el mapa `sheet`** de cada cliente. Nunca toca `paso`, `documentos` ni `notas`.
+Se ejecuta **a mano**, desde el menú del Sheet (**🧾 Rentas 2026 → ⟳ Enviar clientes a la plataforma**): no hay disparador automático. Escribe con `merge` **solo el mapa `sheet`** de cada cliente. Nunca toca `paso`, `documentos` ni `notas`.
 
 Autenticación: cuenta de servicio de Firebase, con su JWT firmado desde Apps Script contra la API REST de Firestore.
 
