@@ -371,6 +371,9 @@ button.pastilla:active{transform:scale(.94)}
 .cifras__v--sube{color:var(--ok)}
 .cifras__v--baja{color:var(--riesgo)}
 .cifras__c{color:var(--tx-3);font-size:var(--t-xs);text-align:right;display:block;margin-top:2px}
+/* El asterisco de la justificación patrimonial: el mismo que sale en el
+   correo, con la explicación completa en el `title` para leerla encima. */
+.cifras__ast{color:#C4923A;cursor:help;font-weight:600}
 /* El borrador se ve tal como le va a llegar al cliente: fondo claro
    siempre, aunque la consola esté en oscuro. */
 .borrador{margin-top:calc(var(--u)*2);border:1px solid var(--linea);border-radius:var(--r-l);
@@ -1844,21 +1847,20 @@ function correoFaltantes(c){
 
    Distinto del recordatorio de arriba, y a propósito:
 
-   · El recordatorio lo ENVÍA el servidor y, si ya se pasó la fecha de
-     entrega, aplica el cargo de los $70.000 en el mismo acto.
-   · Este NO lo envía la plataforma ni cobra nada. Es el aviso de la
-     última oportunidad: se arma el borrador, se copia con formato y se
-     pega en Gmail, igual que el correo de presentación. Así se puede
-     ajustar el texto antes de mandarlo, que es lo que uno quiere hacer
-     justo cuando le está avisando a alguien que va a costarle plata.
+   · El recordatorio, si ya se pasó la fecha de entrega, aplica el cargo
+     de los $70.000 en el mismo acto.
+   · Este NO cobra nada: es justamente el aviso de la última oportunidad
+     para evitarlo.
+
+   Lo que SÍ comparten es el camino: los dos los envía el Apps Script del
+   Sheet, de una sola pulsación y sin vista previa. El texto de aquí abajo
+   es solo el gemelo en texto plano —para copiarlo a WhatsApp—, igual que
+   `correoFaltantes` lo es del recordatorio; el correo de verdad lo arma el
+   servidor en HTML (`enviarCorreoUltimoDia` en recordatorios.gs).
 
    El plazo del que habla es el de ENTREGA (una semana antes del
    vencimiento), no el vencimiento de la DIAN: es el que evita el cargo.
    ══════════════════════════════════════════════════════════════ */
-
-// Expedientes con el borrador de último día a la vista (por cédula).
-// Igual que borradoresAbiertos: es de esta sesión y no se guarda.
-const ultimoDiaAbiertos = new Set();
 
 function correoUltimoDia(c){
   const nombre = String(c.sheet.nombre||'').replace(/\s+/g,' ').trim() || 'cliente';
@@ -1868,38 +1870,10 @@ function correoUltimoDia(c){
 
   // El texto se ajusta al día real. Decir «hoy es el último día» cuando
   // faltan tres es la clase de mentira que el cliente comprueba solo.
-  const plazoHtml = dl === 0
-    ? `<strong>Hoy es el último día</strong> para enviarnos sus documentos sin que se aplique el cargo por entrega tardía de <strong>${pesos(MULTA_DOCS)}</strong>.`
-    : `El <strong>${fLarga(limite)}</strong> es el último día para enviarnos sus documentos sin que se aplique el cargo por entrega tardía de <strong>${pesos(MULTA_DOCS)}</strong>` +
-      (dl > 0 ? ` — le queda${dl===1?'':'n'} <strong>${dl} día${dl===1?'':'s'}</strong>.` : '.');
   const plazoTxt = dl === 0
     ? `Hoy es el último día para enviarnos sus documentos sin que se aplique el cargo por entrega tardía de ${pesos(MULTA_DOCS)}.`
     : `El ${fLarga(limite)} es el último día para enviarnos sus documentos sin que se aplique el cargo por entrega tardía de ${pesos(MULTA_DOCS)}` +
       (dl > 0 ? ` — le queda${dl===1?'':'n'} ${dl} día${dl===1?'':'s'}.` : '.');
-
-  const lista = faltan.length
-    ? '<ul style="margin:6px 0 18px;padding-left:20px;line-height:1.6">' +
-        faltan.map(f=>`<li>${esc(f)}</li>`).join('') + '</ul>'
-    : '<p style="margin:6px 0 18px;color:#5A6472">(No hay documentos marcados como pendientes en el expediente.)</p>';
-
-  const html =
-'<div style="font-family:system-ui,Arial,sans-serif;max-width:660px;margin:0 auto;color:#1B2536">' +
-  '<div style="background:linear-gradient(135deg,#06192F,#08264E);color:#fff;padding:26px;border-radius:12px 12px 0 0;text-align:center;border-bottom:3px solid #C4923A">' +
-    '<h2 style="margin:0;font-family:Georgia,serif;font-weight:400">Cano Herrera Asesorías SAS</h2>' +
-    `<p style="margin:6px 0 0;opacity:.85;font-size:13px">Declaración de Renta · Año Gravable ${PERIODO} · Documentos pendientes</p>` +
-  '</div>' +
-  '<div style="background:#fff;padding:26px;border:1px solid #eee;border-top:none;border-radius:0 0 12px 12px">' +
-    `<p style="margin:0 0 14px">Estimado(a) <strong>${esc(nombre)}</strong>,</p>` +
-    '<p style="margin:0 0 14px;background:#F1E6CE;border-left:4px solid #C4923A;padding:12px 14px;border-radius:6px">' +
-      '⏰ ' + plazoHtml + '</p>' +
-    `<p style="margin:0 0 14px">A la fecha <strong>aún no hemos recibido</strong> los documentos que necesitamos para elaborar y presentar su declaración del año gravable ${PERIODO}, que vence el <strong>${fLarga(vence)}</strong>:</p>` +
-    lista +
-    '<p style="margin:0 0 14px">Le agradecemos enviárnoslos <strong>el día de hoy</strong> al correo ' +
-      '<a href="mailto:rentas.chsas@gmail.com" style="color:#08264E"><strong>rentas.chsas@gmail.com</strong></a>, ' +
-      'o respondiendo a este mismo mensaje. Quedamos atentos.</p>' +
-    '<p style="margin:0;font-size:13px;color:#5A6472">Saludos cordiales,<br>Cano Herrera Asesorías SAS · rentas.chsas@gmail.com</p>' +
-  '</div>' +
-'</div>';
 
   const L = [];
   L.push(`Estimado(a) ${nombre},`);
@@ -1911,7 +1885,7 @@ function correoUltimoDia(c){
   faltan.forEach(f => L.push(`  • ${f}`));
   if(!faltan.length) L.push('  (No hay documentos marcados como pendientes en el expediente.)');
   L.push('');
-  L.push('Le agradecemos enviárnoslos EL DÍA DE HOY al correo rentas.chsas@gmail.com, o respondiendo a este mismo mensaje. Quedamos atentos.');
+  L.push('Le agradecemos enviárnoslos LO ANTES POSIBLE al correo rentas.chsas@gmail.com, o respondiendo a este mismo mensaje. Quedamos atentos.');
   L.push('');
   L.push('Saludos cordiales,');
   L.push('Cano Herrera Asesorías SAS · rentas.chsas@gmail.com');
@@ -1920,7 +1894,7 @@ function correoUltimoDia(c){
     asunto: dl === 0
       ? `Hoy vence el plazo para enviarnos sus documentos — Declaración de Renta ${PERIODO}`
       : `Último día para enviarnos sus documentos: ${fLarga(limite)} — Declaración de Renta ${PERIODO}`,
-    html, texto: L.join('\n')
+    texto: L.join('\n')
   };
 }
 
@@ -1930,9 +1904,9 @@ function correoUltimoDia(c){
    pueda LEER no significa que no se haya enviado: por eso quien llama
    distingue «falló» de «no sé». La confirmación que de verdad sirve es la
    carpeta «Enviados» de rentas.chsas, que es la cuenta que lo manda. */
-async function pedirEnvioRecordatorio(c){
+async function pedirEnvio(accion, c){
   const cuerpo = JSON.stringify({
-    accion:'recordatorio', token:TOKEN_BACKEND,
+    accion, token:TOKEN_BACKEND,
     cedula:c.cedula, vence:venceDe(c), faltantes:faltantesDe(c)
   });
   const resp = await fetch(URL_BACKEND, {
@@ -1940,6 +1914,10 @@ async function pedirEnvioRecordatorio(c){
   });
   try{ return await resp.json(); }catch(_){ return null; }
 }
+// Los dos correos de documentos salen por el mismo endpoint; lo único que
+// cambia es cuál de los dos arma el servidor —y que el de último día no cobra.
+const pedirEnvioRecordatorio = c => pedirEnvio('recordatorio', c);
+const pedirEnvioUltimoDia    = c => pedirEnvio('ultimodia', c);
 
 /* La barra que aparece arriba de las categorías cuando falta algo. */
 function bloquePedir(c){
@@ -1954,7 +1932,6 @@ function bloquePedir(c){
      completar los documentos y volver a faltar uno, el borrador reaparecía
      solo sin que nadie lo pidiera. Va DESPUÉS del guard de arriba a
      propósito: sin el expediente cargado, faltantesDe no es de fiar. */
-  if(!faltan.length) ultimoDiaAbiertos.delete(c.cedula);
   if(!faltan.length) return ult
     ? `<div class="pedir"><span class="pedir__x" style="margin:0;text-align:left;max-width:none">Papeles completos. La última solicitud se envió el ${fLarga(ult)}.</span></div>`
     : '';
@@ -1974,20 +1951,12 @@ function bloquePedir(c){
      y no se haya cobrado: pasado eso, la herramienta correcta es «Enviar
      recordatorio», que es la que aplica el cargo. */
   const udVigente = dl >= 0 && !recargoDe(c);
-  /* La vista previa se cierra sola si el plazo dejó de estar vigente. Sin
-     esto, quien la dejó abierta y después aplicó el cargo —con «Enviar
-     recordatorio» o a mano— seguía teniendo a la vista los botones de copiar
-     y de Gmail sobre un borrador que ya mentía: le decía al cliente «todavía
-     está a tiempo de evitar los $70.000» cuando ya se los habían sumado. */
-  if(!udVigente) ultimoDiaAbiertos.delete(c.cedula);
-  const udAbierto = udVigente && ultimoDiaAbiertos.has(c.cedula);
-  const brrUD = udAbierto ? correoUltimoDia(c) : null;
   const udNota = !udVigente
     ? (recargoDe(c) ? 'El cargo ya está aplicado: para insistir usa «Enviar recordatorio».'
                     : `La fecha de entrega (${fLarga(limiteEntregaDe(c))}) ya pasó: usa «Enviar recordatorio», que aplica el cargo.`)
     : !correos.length
       ? 'Sin correo en el Sheet: se puede copiar, pero no hay a dónde escribirle.'
-      : 'La plataforma no lo envía ni cobra nada: se copia y se pega en Gmail, para poder ajustarlo antes de mandarlo.';
+      : 'Sale al instante desde rentas.chsas, sin vista previa. No cobra nada: es el aviso para evitar el cargo.';
 
   return `<div class="pedir pedir--alerta">
     <button class="btn btn--fuerte btn--chico" data-pedirdocs${correos.length?'':' disabled'}>✉ Enviar recordatorio (${faltan.length} pendientes)</button>
@@ -1995,14 +1964,10 @@ function bloquePedir(c){
     <span class="pedir__x">${esc(nota)}</span>
   </div>
   <div class="pedir${dl===0?' pedir--alerta':''}">
-    <button class="btn ${dl===0?'btn--fuerte ':''}btn--chico" data-ultimodia${udVigente?'':' disabled'}>⏰ ${udAbierto?'Actualizar':'Correo de'} último día${dl===0?' (es HOY)':''}</button>
-    ${udAbierto?`
-      <button class="btn btn--chico" data-copiarud>⧉ Copiar con formato</button>
-      <button class="btn btn--chico" data-gmailud${correos.length?'':' disabled'}>✉ Abrir en Gmail</button>
-      <button class="btn btn--chico" data-copiarudtxt>⧉ Copiar en texto</button>`:''}
+    <button class="btn ${dl===0?'btn--fuerte ':''}btn--chico" data-ultimodia${(udVigente&&correos.length)?'':' disabled'}>⏰ Enviar correo de último día${dl===0?' (es HOY)':''}</button>
+    <button class="btn btn--chico" data-copiarudtxt${udVigente?'':' disabled'}>⧉ Copiar el texto</button>
     <span class="pedir__x">${esc(udNota)}</span>
-  </div>
-  ${brrUD ? `<div class="borrador" data-vistaud>${brrUD.html}</div>` : ''}`;
+  </div>`;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -2032,16 +1997,31 @@ const TAREA_CORREO_PRES = 'Correo de presentación enviado al cliente';
    vea a medio hacer a que salga sin decir a dónde consignar. */
 const CUENTA_PAGO = 'Nu. C.F.\nCuenta de ahorros: 29296124\nCédula de ciudadanía: 1022421206\nNu Placa: JCH206\nLlave Bre-B: 3183871275';   // los \n salen como renglones
 
-/* Los cinco renglones del cuadro, en el orden en que se leen: de dónde
-   salió la plata, cuánto hay, cuánto le tocó, cuánto le habían retenido
-   y con qué queda. `sal` se deduce solo (ver valorCifra). */
+/* Los seis renglones del cuadro, en el orden en que se leen: de dónde
+   salió la plata, cuánto hay, cuánto le tocó, cuánto le habían retenido,
+   con qué queda y si el patrimonio que creció está respaldado por los
+   ingresos. `sal` y `jus` se deducen solos (ver valorCifra).
+   `pista` es la fórmula que se muestra bajo el rótulo en la consola;
+   `nota` marca los renglones que llevan el asterisco explicativo. */
 const CONCEPTOS_DECL = [
   {k:'ing', et:'Ingresos brutos'},
   {k:'pat', et:'Patrimonio bruto'},
   {k:'imp', et:'Impuesto a cargo'},
   {k:'ret', et:'Retenciones'},
-  {k:'sal', et:'Saldo final'}
+  {k:'sal', et:'Saldo final', pista:'retenciones − impuesto'},
+  {k:'jus', et:'Justificación patrimonial', pista:'ingresos − incremento patrimonial', nota:true}
 ];
+
+/* El asterisco del cuadro. Va con las palabras del cliente, no con las
+   nuestras: es lo que de verdad pregunta cuando ve un número negativo
+   ahí («¿tengo que justificar algo ante la DIAN?»). */
+const NOTA_JUSTIFICACION =
+  'Valor de justificación patrimonial: corresponde a la diferencia entre los ingresos ' +
+  'obtenidos durante el período y el incremento del patrimonio. Un resultado igual a cero ' +
+  'indica que el crecimiento patrimonial está totalmente respaldado por los ingresos. ' +
+  'Un resultado positivo indica que los ingresos superan el crecimiento patrimonial, ' +
+  'mientras que un resultado negativo indica que el crecimiento patrimonial supera los ' +
+  'ingresos y, por tanto, existe un valor pendiente de justificar.';
 
 // Lo que va adjunto. El primero es el que manda la frase de apertura.
 const ADJUNTOS_DECL = [
@@ -2070,17 +2050,37 @@ const milesTxt = n => (n===''||n==null) ? '' : Number(n).toLocaleString('es-CO')
 const pesosS = n => (n==null||n==='') ? '—' : (n<0 ? '-'+pesos(-n) : pesos(n));
 
 /* Un valor del cuadro. `a` = año anterior, `b` = año actual.
-   El saldo final no se pide: es retenciones − impuesto a cargo (positivo,
-   saldo a favor; negativo, a pagar). Se puede escribir a mano —hay
-   anticipos y sanciones que no salen de esa resta— y entonces manda lo
-   escrito. */
+
+   Dos renglones no se piden, se deducen (y se pueden escribir a mano, y
+   entonces manda lo escrito):
+
+   · El SALDO FINAL es retenciones − impuesto a cargo (positivo, saldo a
+     favor; negativo, a pagar). Se escribe encima cuando hay anticipos o
+     sanciones, que no salen de esa resta.
+   · La JUSTIFICACIÓN PATRIMONIAL es ingresos − incremento patrimonial, y
+     el incremento es patrimonio del año actual − patrimonio del anterior.
+     Por eso solo existe en la columna del año actual: para calcularla en
+     la del año anterior haría falta el patrimonio de un tercer año que el
+     cuadro no tiene. */
 function valorCifra(c, k, ab){
-  const v = cifrasDe(c)[k+ab];
+  const cif = cifrasDe(c);
+  const v = cif[k+ab];
   if(v!=='' && v!=null) return Number(v);
-  if(k!=='sal') return null;
-  const ret = cifrasDe(c)['ret'+ab], imp = cifrasDe(c)['imp'+ab];
-  if((ret===''||ret==null) && (imp===''||imp==null)) return null;
-  return (Number(ret)||0) - (Number(imp)||0);
+  const hay = x => x!=='' && x!=null;
+  if(k==='sal'){
+    const ret = cif['ret'+ab], imp = cif['imp'+ab];
+    if(!hay(ret) && !hay(imp)) return null;
+    return (Number(ret)||0) - (Number(imp)||0);
+  }
+  if(k==='jus'){
+    if(ab!=='b') return null;
+    // Sin los dos patrimonios no hay incremento, y sin incremento no hay
+    // justificación: dar por cero el año que falta inventaba un crecimiento
+    // del tamaño del patrimonio entero.
+    if(!hay(cif.ingb) || !hay(cif.pata) || !hay(cif.patb)) return null;
+    return Number(cif.ingb) - (Number(cif.patb) - Number(cif.pata));
+  }
+  return null;
 }
 
 /* La variación entre los dos años: la diferencia con flecha y el
@@ -2119,7 +2119,7 @@ function fraseSaldo(c){
 function filasPresentacion(c){
   return CONCEPTOS_DECL.map(x=>{
     const a = valorCifra(c,x.k,'a'), b = valorCifra(c,x.k,'b');
-    return {k:x.k, et:x.et, a, b, v:variacion(a,b)};
+    return {k:x.k, et:x.et, pista:x.pista, nota:x.nota, a, b, v:variacion(a,b)};
   });
 }
 const hayCifras = c => filasPresentacion(c).some(f=>f.a!=null || f.b!=null);
@@ -2165,12 +2165,22 @@ function correoPresentacion(c){
      '</tr>' +
      filas.map(f =>
        '<tr>' +
-         `<td style="padding:9px 10px;border-bottom:1px solid #EFEFEF">${esc(f.et)}</td>` +
+         `<td style="padding:9px 10px;border-bottom:1px solid #EFEFEF">${esc(f.et)}${f.nota?'<sup style="color:#C4923A">*</sup>':''}</td>` +
          `<td style="padding:9px 10px;border-bottom:1px solid #EFEFEF;text-align:right;white-space:nowrap">${pesosS(f.a)}</td>` +
          `<td style="padding:9px 10px;border-bottom:1px solid #EFEFEF;text-align:right;white-space:nowrap;font-weight:600">${pesosS(f.b)}</td>` +
          `<td style="padding:9px 10px;border-bottom:1px solid #EFEFEF;text-align:right">${celdaV(f)}</td>` +
        '</tr>').join('') +
    '</table>';
+
+  /* El asterisco de la justificación patrimonial. Solo sale si el renglón
+     trae número: una nota al pie que explica una casilla vacía no explica
+     nada y deja el correo con cara de plantilla a medio llenar. */
+  const filaJus = filas.find(f=>f.k==='jus');
+  const notaJus = (filaJus && (filaJus.a!=null || filaJus.b!=null))
+    ? '<p style="margin:-8px 0 18px;font-size:12.5px;line-height:1.55;color:#5A6472;' +
+      'background:#FBF9F4;border-left:3px solid #C4923A;border-radius:6px;padding:11px 13px">' +
+      '<strong style="color:#C4923A">*</strong> ' + esc(NOTA_JUSTIFICACION) + '</p>'
+    : '';
 
   // Los honorarios pendientes salen del cobro del expediente, no se
   // escriben otra vez: es el mismo número del bloque Cobro.
@@ -2194,6 +2204,7 @@ function correoPresentacion(c){
     `<p style="margin:0 0 18px">${esc(apertura)}</p>` +
     '<p style="margin:0 0 4px;font-weight:600">Resumen de valores clave</p>' +
     tabla +
+    notaJus +
     cobro +
     '<p style="margin:0 0 14px">Quedamos atentos a cualquier inquietud sobre estos valores.</p>' +
     '<p style="margin:0;font-size:13px;color:#5A6472">Saludos cordiales,<br>Cano Herrera Asesorías SAS · rentas.chsas@gmail.com</p>' +
@@ -2202,7 +2213,8 @@ function correoPresentacion(c){
 
   /* La misma carta en texto plano, para WhatsApp o para pegarla donde el
      formato no sobrevive. El cuadro se alinea con espacios. */
-  const anchoEt = Math.max(...filas.map(f=>f.et.length));
+  const etTxt = f => f.et + (f.nota ? ' *' : '');
+  const anchoEt = Math.max(...filas.map(f=>etTxt(f).length));
   const L = [];
   L.push(`Buen día, ${nombre},`);
   L.push('');
@@ -2211,8 +2223,9 @@ function correoPresentacion(c){
   L.push('RESUMEN DE VALORES CLAVE');
   L.push(`${'Concepto'.padEnd(anchoEt)}  ${('AG '+A).padStart(14)}  ${('AG '+B).padStart(14)}  Variación`);
   filas.forEach(f => L.push(
-    `${f.et.padEnd(anchoEt)}  ${pesosS(f.a).padStart(14)}  ${pesosS(f.b).padStart(14)}  ${f.v?f.v.txt:'—'}`));
+    `${etTxt(f).padEnd(anchoEt)}  ${pesosS(f.a).padStart(14)}  ${pesosS(f.b).padStart(14)}  ${f.v?f.v.txt:'—'}`));
   L.push('');
+  if(notaJus){ L.push('* ' + NOTA_JUSTIFICACION); L.push(''); }
   if(r.saldo > 0){
     L.push(`Quedamos pendientes de la consignación de los honorarios por valor total de ${pesos(r.saldo)} en la cuenta:`);
     L.push(CUENTA_PAGO || '[ escribe aquí la cuenta ]');
@@ -2259,11 +2272,12 @@ function bloquePresentacion(c){
     : saldo < 0 ? `saldo a pagar ${pesos(-saldo)}` : 'saldo en cero';
 
   const fila = f => {
-    // El saldo se calcula solo: su casilla va vacía con el valor deducido
-    // de marca de agua, y solo se escribe encima cuando hay que corregirlo.
-    const calc = f.k==='sal';
+    // El saldo y la justificación se calculan solos: su casilla va vacía con
+    // el valor deducido de marca de agua, y solo se escribe encima cuando hay
+    // que corregirlo. La fórmula queda a la vista bajo el rótulo.
+    const calc = !!f.pista;
     return `<tr>
-      <td>${esc(f.et)}${calc?'<span class="cifras__c">retenciones − impuesto</span>':''}</td>
+      <td>${esc(f.et)}${f.nota?`<sup class="cifras__ast" title="${esc(NOTA_JUSTIFICACION)}">*</sup>`:''}${calc?`<span class="cifras__c">${esc(f.pista)}</span>`:''}</td>
       <td><input class="campo" inputmode="numeric" data-cifra="${f.k}a" value="${milesTxt(cif[f.k+'a'])}"
             placeholder="${calc?milesTxt(f.a):''}" aria-label="${esc(f.et)} ${A}"></td>
       <td><input class="campo" inputmode="numeric" data-cifra="${f.k}b" value="${milesTxt(cif[f.k+'b'])}"
@@ -2279,11 +2293,12 @@ function bloquePresentacion(c){
   return `<details class="bloque bloque--pleg tarjeta-vidrio" data-seccion="presentacion"${seccionesAbiertas.has('presentacion')?' open':''}>
     <summary class="bloque__r">Correo de presentación <span>${esc(rot)}</span></summary>
     <div class="bloque__cuerpo">
-      <p class="sinnota">Escribe los valores de los dos años gravables; la variación se calcula sola. El saldo final sale de retenciones − impuesto, y se puede escribir a mano si hay anticipos o sanciones.</p>
+      <p class="sinnota">Escribe los valores de los dos años gravables; la variación se calcula sola. El saldo final sale de retenciones − impuesto, y la justificación patrimonial de los ingresos de ${B} menos el incremento del patrimonio (${B} − ${A}); las dos se pueden escribir a mano si hay que corregirlas.</p>
       <table class="cifras">
         <tr><th>Concepto</th><th>Año gravable ${A}</th><th>Año gravable ${B}</th><th>Variación</th></tr>
         ${filas.map(fila).join('')}
       </table>
+      <p class="sinnota" style="margin-top:calc(var(--u)*1.5)"><b>*</b> ${esc(NOTA_JUSTIFICACION)} <em>Este mismo texto va como nota al pie en el correo.</em></p>
 
       <div class="chequeo" style="margin-top:calc(var(--u)*2)">
         ${ADJUNTOS_DECL.map((t,i)=>`<label class="chequeo__i"><input type="checkbox" data-adj="${i}"${adjOn(c,i)?' checked':''}><span>${esc(t)}</span></label>`).join('')}
@@ -2668,9 +2683,10 @@ function cablearCliente(c){
         cel.classList.toggle('cifras__v--sube', !!f.v && f.v.d>0);
         cel.classList.toggle('cifras__v--baja', !!f.v && f.v.d<0);
       }
-      // El saldo deducido se muestra de marca de agua en su propia casilla.
-      if(f.k==='sal'){
-        const ia = $('[data-cifra="sala"]',raiz), ib = $('[data-cifra="salb"]',raiz);
+      // Los valores deducidos (saldo y justificación) se muestran de marca de
+      // agua en su propia casilla, para que se vean sin tener que escribirlos.
+      if(f.k==='sal' || f.k==='jus'){
+        const ia = $(`[data-cifra="${f.k}a"]`,raiz), ib = $(`[data-cifra="${f.k}b"]`,raiz);
         if(ia) ia.placeholder = milesTxt(f.a);
         if(ib) ib.placeholder = milesTxt(f.b);
       }
@@ -2741,14 +2757,15 @@ function cablearCliente(c){
   };
 
   /* ── Correo de último día ──────────────────────────────────
-     Mismo mecanismo que el de presentación: se genera el borrador, se
-     copia con formato y se abre Gmail. La diferencia importante es que
-     este NO aplica el cargo — es justamente el aviso para evitarlo — así
-     que registrarSolicitud va con `cobrar = false`. */
-  /* Antes de abrir el borrador, de copiarlo o de abrir Gmail se comprueba que
-     el aviso siga siendo cierto. La pantalla pudo quedarse abierta mientras
-     alguien más aplicaba el cargo: mandar «todavía está a tiempo de evitar
-     los $70.000» a quien ya los tiene sumados es el peor error posible aquí. */
+     Mismo mecanismo que «Enviar recordatorio»: lo manda el servidor de una
+     pulsación, sin vista previa ni pasar por Gmail. La diferencia importante
+     es que este NO aplica el cargo —es justamente el aviso para evitarlo—,
+     así que registrarSolicitud va con `cobrar = false`. */
+  /* Antes de enviarlo o de copiarlo se comprueba que el aviso siga siendo
+     cierto. La pantalla pudo quedarse abierta mientras alguien más aplicaba
+     el cargo: mandar «todavía está a tiempo de evitar los $70.000» a quien ya
+     los tiene sumados es el peor error posible aquí. (El servidor lo vuelve a
+     comprobar contra el Sheet; esto solo evita el viaje.) */
   const udSirve = ()=>{
     const v = vivo();
     if(!faltantesDe(v).length){ brindis('No falta ningún documento.'); return null; }
@@ -2757,45 +2774,42 @@ function cablearCliente(c){
     return v;
   };
   const btnUD = $('[data-ultimodia]',raiz);
-  if(btnUD) btnUD.onclick = ()=>{
+  if(btnUD) btnUD.onclick = async ()=>{
     const v = udSirve(); if(!v) return;
-    ultimoDiaAbiertos.add(v.cedula);
-    pintarCliente(v);
-    $('[data-vistaud]',$('#v-cliente'))?.scrollIntoView({block:'nearest',behavior:'smooth'});
-  };
-  const btnCopUD = $('[data-copiarud]',raiz);
-  if(btnCopUD) btnCopUD.onclick = async ()=>{
-    const v = udSirve(); if(!v) return;
-    const b = correoUltimoDia(v);
-    const r2 = await copiarConFormato(b.html, b.texto);
-    brindis(r2==='html' ? 'Borrador copiado con formato. Pégalo en Gmail con Ctrl+V.'
-          : r2==='texto' ? 'Tu navegador no dejó copiar el formato: quedó el texto plano.'
-          : 'No pude copiar. Selecciona el borrador a mano y cópialo.');
+    const correos = correosDe(v);
+    if(!correos.length){ brindis('Ese cliente no tiene correo registrado en el Sheet.'); return; }
+    const faltan = faltantesDe(v);
+
+    const rotulo = btnUD.textContent;
+    btnUD.disabled = true; btnUD.textContent = 'Enviando…';
+    try{
+      const r = await pedirEnvioUltimoDia(v);
+      // `null` = el navegador no pudo leer la respuesta (Apps Script redirige
+      // a otro dominio). El correo casi seguro salió; se dice tal cual.
+      if(r && r.ok === false){
+        alarma('No se envió el correo de último día: ' + (r.error || 'el servidor lo rechazó.'));
+        btnUD.disabled = false; btnUD.textContent = rotulo;
+        return;
+      }
+      // `false` en el tercer parámetro: este correo NO cobra.
+      registrarSolicitud(faltan, 'correo de último día', false);
+      const aQuien = (r && r.enviadoA) ? r.enviadoA.join(', ') : correos.join(', ');
+      brindis(`Correo de último día enviado a ${aQuien}. No se aplicó ningún cargo.`
+        + (r ? '' : ' Verifícalo en «Enviados» de rentas.chsas.'));
+    }catch(err){
+      // Casi siempre es que se cayó la conexión. No se anota nada en el
+      // expediente: no consta que el correo haya salido.
+      alarma('No pude comunicarme con el servidor de correo: ' + (err?.message || err) +
+             '. Revisa la conexión, o usa «Copiar el texto» y mándalo a mano.');
+      btnUD.disabled = false; btnUD.textContent = rotulo;
+    }
   };
   const btnCopUDTxt = $('[data-copiarudtxt]',raiz);
   if(btnCopUDTxt) btnCopUDTxt.onclick = async ()=>{
     const v = udSirve(); if(!v) return;
     try{ await navigator.clipboard.writeText(correoUltimoDia(v).texto);
-      brindis('Texto copiado (sin formato), listo para WhatsApp.');
+      brindis('Texto copiado. Si lo envías por WhatsApp, anótalo tú en el expediente.');
     }catch(_){ brindis('No pude copiar solo.'); }
-  };
-  const btnGmailUD = $('[data-gmailud]',raiz);
-  if(btnGmailUD) btnGmailUD.onclick = async ()=>{
-    const v = udSirve(); if(!v) return;
-    const correos = correosDe(v);
-    if(!correos.length){ brindis('Ese cliente no tiene correo registrado en el Sheet.'); return; }
-    const faltan = faltantesDe(v);
-    const b = correoUltimoDia(v);
-    const r2 = await copiarConFormato(b.html, b.texto);
-    window.open('https://mail.google.com/mail/?view=cm&fs=1'
-      + '&to=' + encodeURIComponent(correos.join(','))
-      + '&su=' + encodeURIComponent(b.asunto), '_blank', 'noopener');
-    // Queda constancia en el expediente, igual que con el recordatorio del
-    // servidor. `false` en el tercer parámetro: este correo NO cobra.
-    registrarSolicitud(faltan, 'correo de último día', false);
-    brindis((r2==='html' ? 'Abrí Gmail. Pega con Ctrl+V y revisa antes de enviar.'
-                         : 'Abrí Gmail. El formato no se pudo copiar: pega el texto plano.')
-            + ' Lo anoté como solicitud enviada; si al final no lo mandas, bórralo del expediente. No se aplicó ningún cargo.');
   };
 
   // No obligado a declarar. Deja un comentario general automático, porque es
