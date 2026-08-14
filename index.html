@@ -374,6 +374,14 @@ button.pastilla:active{transform:scale(.94)}
 /* El asterisco de la justificación patrimonial: el mismo que sale en el
    correo, con la explicación completa en el `title` para leerla encima. */
 .cifras__ast{color:#C4923A;cursor:help;font-weight:600}
+/* La casilla de la justificación cuando trae el valor calculado: se ve que
+   es un número puesto por la plataforma y no algo que alguien tecleó. En
+   cuanto se escribe encima, pierde la clase y queda como cualquier campo. */
+.campo--auto{background:var(--acento-velo);font-weight:600}
+/* «Justificado»: el patrimonio bajó y no hay nada que respaldar. Va en verde
+   porque es una buena noticia, no una casilla a medio llenar. */
+.campo--ok{background:rgba(48,209,88,.14);color:var(--ok);font-weight:600}
+.cifras__c--falta{color:var(--alerta)}
 /* El borrador se ve tal como le va a llegar al cliente: fondo claro
    siempre, aunque la consola esté en oscuro. */
 .borrador{margin-top:calc(var(--u)*2);border:1px solid var(--linea);border-radius:var(--r-l);
@@ -2046,6 +2054,15 @@ function normNumeroSigno(v){
   return n ? (neg ? -Number(n) : Number(n)) : '';
 }
 const milesTxt = n => (n===''||n==null) ? '' : Number(n).toLocaleString('es-CO');
+/* Un valor de `cifras` como número. Normalmente ya lo es —lo guarda
+   normNumeroSigno—, pero un expediente viejo o un dato que entró por otro
+   camino puede traerlo escrito («300.000.000»), y ahí `Number()` devuelve
+   NaN: la justificación salía como «$NaN» en el correo del cliente. */
+const numCifra = v => {
+  if(typeof v === 'number') return v;
+  const n = normNumeroSigno(v);
+  return n==='' ? 0 : n;
+};
 // Pesos con signo: los negativos se leen «-$3.540.000», no «$-3.540.000».
 const pesosS = n => (n==null||n==='') ? '—' : (n<0 ? '-'+pesos(-n) : pesos(n));
 
@@ -2061,7 +2078,12 @@ const pesosS = n => (n==null||n==='') ? '—' : (n<0 ? '-'+pesos(-n) : pesos(n))
      el incremento es patrimonio del año actual − patrimonio del anterior.
      Por eso solo existe en la columna del año actual: para calcularla en
      la del año anterior haría falta el patrimonio de un tercer año que el
-     cuadro no tiene. */
+     cuadro no tiene.
+
+     Y si el patrimonio BAJÓ, no hay cuenta que hacer: no existe crecimiento
+     que respaldar, así que el renglón dice «Justificado» en vez de un número.
+     Restarle un incremento negativo a los ingresos daba una cifra más alta
+     que los ingresos mismos, que no significa nada y solo confunde. */
 function valorCifra(c, k, ab){
   const cif = cifrasDe(c);
   const v = cif[k+ab];
@@ -2074,13 +2096,50 @@ function valorCifra(c, k, ab){
   }
   if(k==='jus'){
     if(ab!=='b') return null;
+    const inc = incrementoPatrimonial(c);
     // Sin los dos patrimonios no hay incremento, y sin incremento no hay
     // justificación: dar por cero el año que falta inventaba un crecimiento
     // del tamaño del patrimonio entero.
-    if(!hay(cif.ingb) || !hay(cif.pata) || !hay(cif.patb)) return null;
-    return Number(cif.ingb) - (Number(cif.patb) - Number(cif.pata));
+    if(inc==null || !hay(cif.ingb)) return null;
+    if(inc < 0) return null;                  // el patrimonio bajó: ver jusJustificado
+    return numCifra(cif.ingb) - inc;
   }
   return null;
+}
+
+/* Cuánto creció el patrimonio: el del período menos el del año anterior.
+   `null` si falta alguno de los dos, que no es lo mismo que cero. */
+function incrementoPatrimonial(c){
+  const cif = cifrasDe(c);
+  const hay = x => x!=='' && x!=null;
+  if(!hay(cif.pata) || !hay(cif.patb)) return null;
+  return numCifra(cif.patb) - numCifra(cif.pata);
+}
+
+/* ¿El renglón va como «Justificado» en vez de como cifra? Pasa cuando el
+   patrimonio bajó: no hay crecimiento que respaldar. Lo escrito a mano
+   manda, como en todo el cuadro. */
+function jusJustificado(c){
+  const cif = cifrasDe(c);
+  if(cif.jusb!=='' && cif.jusb!=null) return false;
+  const inc = incrementoPatrimonial(c);
+  return inc!=null && inc < 0;
+}
+
+/* Qué le falta a la justificación para poder calcularse. Se dice cuál es la
+   casilla que falta, no un «—» mudo: el operador ve el renglón vacío y lo
+   que necesita saber es DÓNDE escribir, no que el cálculo no salió. */
+function faltaJustificacion(c, A){
+  const cif = cifrasDe(c);
+  const hay = x => x!=='' && x!=null;
+  // Si el patrimonio bajó ya no falta nada: el renglón dice «Justificado»
+  // aunque no estén los ingresos, y pedirlos al lado se contradecía solo.
+  if(jusJustificado(c)) return [];
+  const f = [];
+  if(!hay(cif.ingb)) f.push('ingresos');
+  if(!hay(cif.patb)) f.push('patrimonio');
+  if(!hay(cif.pata)) f.push(`patrimonio ${A}`);
+  return f;
 }
 
 /* La variación entre los dos años: la diferencia con flecha y el
@@ -2114,12 +2173,18 @@ function fraseSaldo(c){
   return 'sin saldo a favor ni a pagar';
 }
 
-// Las filas del cuadro, ya calculadas. Una sola función para el borrador
-// HTML, el texto plano y la vista de la consola: así los tres dicen lo mismo.
+/* Las filas del cuadro, ya calculadas. Una sola función para el borrador
+   HTML, el texto plano y la vista de la consola: así los tres dicen lo mismo.
+
+   `txtB` es una palabra que va EN VEZ del número en la columna del período
+   —hoy solo el «Justificado» de la justificación patrimonial—. Quien pinta
+   la fila la respeta antes que a `b`; así el caso no hay que repetirlo en
+   los tres sitios que dibujan el mismo cuadro. */
 function filasPresentacion(c){
   return CONCEPTOS_DECL.map(x=>{
     const a = valorCifra(c,x.k,'a'), b = valorCifra(c,x.k,'b');
-    return {k:x.k, et:x.et, pista:x.pista, nota:x.nota, a, b, v:variacion(a,b)};
+    const txtB = (x.k==='jus' && jusJustificado(c)) ? 'Justificado' : '';
+    return {k:x.k, et:x.et, pista:x.pista, nota:x.nota, a, b, txtB, v:variacion(a,b)};
   });
 }
 const hayCifras = c => filasPresentacion(c).some(f=>f.a!=null || f.b!=null);
@@ -2167,16 +2232,18 @@ function correoPresentacion(c){
        '<tr>' +
          `<td style="padding:9px 10px;border-bottom:1px solid #EFEFEF">${esc(f.et)}${f.nota?'<sup style="color:#C4923A">*</sup>':''}</td>` +
          `<td style="padding:9px 10px;border-bottom:1px solid #EFEFEF;text-align:right;white-space:nowrap">${pesosS(f.a)}</td>` +
-         `<td style="padding:9px 10px;border-bottom:1px solid #EFEFEF;text-align:right;white-space:nowrap;font-weight:600">${pesosS(f.b)}</td>` +
+         `<td style="padding:9px 10px;border-bottom:1px solid #EFEFEF;text-align:right;white-space:nowrap;font-weight:600">${
+            f.txtB ? `<span style="color:#1E7A46">${esc(f.txtB)}</span>` : pesosS(f.b)}</td>` +
          `<td style="padding:9px 10px;border-bottom:1px solid #EFEFEF;text-align:right">${celdaV(f)}</td>` +
        '</tr>').join('') +
    '</table>';
 
   /* El asterisco de la justificación patrimonial. Solo sale si el renglón
-     trae número: una nota al pie que explica una casilla vacía no explica
-     nada y deja el correo con cara de plantilla a medio llenar. */
+     dice algo —cifra o «Justificado»—: una nota al pie que explica una
+     casilla vacía no explica nada y deja el correo con cara de plantilla a
+     medio llenar. */
   const filaJus = filas.find(f=>f.k==='jus');
-  const notaJus = (filaJus && (filaJus.a!=null || filaJus.b!=null))
+  const notaJus = (filaJus && (filaJus.a!=null || filaJus.b!=null || filaJus.txtB))
     ? '<p style="margin:-8px 0 18px;font-size:12.5px;line-height:1.55;color:#5A6472;' +
       'background:#FBF9F4;border-left:3px solid #C4923A;border-radius:6px;padding:11px 13px">' +
       '<strong style="color:#C4923A">*</strong> ' + esc(NOTA_JUSTIFICACION) + '</p>'
@@ -2223,7 +2290,7 @@ function correoPresentacion(c){
   L.push('RESUMEN DE VALORES CLAVE');
   L.push(`${'Concepto'.padEnd(anchoEt)}  ${('AG '+A).padStart(14)}  ${('AG '+B).padStart(14)}  Variación`);
   filas.forEach(f => L.push(
-    `${etTxt(f).padEnd(anchoEt)}  ${pesosS(f.a).padStart(14)}  ${pesosS(f.b).padStart(14)}  ${f.v?f.v.txt:'—'}`));
+    `${etTxt(f).padEnd(anchoEt)}  ${pesosS(f.a).padStart(14)}  ${(f.txtB||pesosS(f.b)).padStart(14)}  ${f.v?f.v.txt:'—'}`));
   L.push('');
   if(notaJus){ L.push('* ' + NOTA_JUSTIFICACION); L.push(''); }
   if(r.saldo > 0){
@@ -2271,17 +2338,31 @@ function bloquePresentacion(c){
     : saldo > 0 ? `saldo a favor ${pesos(saldo)}`
     : saldo < 0 ? `saldo a pagar ${pesos(-saldo)}` : 'saldo en cero';
 
+  /* La justificación no se teclea nunca: se rellena sola en cuanto están los
+     tres valores de los que sale. Por eso su casilla lleva el número COMO
+     VALOR y no de marca de agua —un gris claro dentro de una casilla vacía se
+     lee como «esto falta por llenar», que es justo lo contrario de lo que
+     pasa—, y solo se queda vacía si de verdad no se puede calcular; entonces
+     dice qué falta. El saldo sigue como estaba: ahí la marca de agua funciona
+     porque escribirlo a mano es corriente (anticipos, sanciones). */
+  const sinEscribir = k => cif[k]==='' || cif[k]==null;
+  const auto = f => f.k==='jus' && sinEscribir('jusb');
+  const faltaJus = faltaJustificacion(c, A);
   const fila = f => {
-    // El saldo y la justificación se calculan solos: su casilla va vacía con
-    // el valor deducido de marca de agua, y solo se escribe encima cuando hay
-    // que corregirlo. La fórmula queda a la vista bajo el rótulo.
+    // El saldo se calcula solo: su casilla va vacía con el valor deducido de
+    // marca de agua, y solo se escribe encima cuando hay que corregirlo. La
+    // fórmula queda a la vista bajo el rótulo.
     const calc = !!f.pista;
+    const esAuto = auto(f);
+    const pistaTxt = (f.k==='jus' && faltaJus.length)
+      ? `faltan: ${faltaJus.join(', ')}` : f.pista;
     return `<tr>
-      <td>${esc(f.et)}${f.nota?`<sup class="cifras__ast" title="${esc(NOTA_JUSTIFICACION)}">*</sup>`:''}${calc?`<span class="cifras__c">${esc(f.pista)}</span>`:''}</td>
+      <td>${esc(f.et)}${f.nota?`<sup class="cifras__ast" title="${esc(NOTA_JUSTIFICACION)}">*</sup>`:''}${calc?`<span class="cifras__c${f.k==='jus'&&faltaJus.length?' cifras__c--falta':''}" data-pista="${f.k}">${esc(pistaTxt)}</span>`:''}</td>
       <td><input class="campo" inputmode="numeric" data-cifra="${f.k}a" value="${milesTxt(cif[f.k+'a'])}"
             placeholder="${calc?milesTxt(f.a):''}" aria-label="${esc(f.et)} ${A}"></td>
-      <td><input class="campo" inputmode="numeric" data-cifra="${f.k}b" value="${milesTxt(cif[f.k+'b'])}"
-            placeholder="${calc?milesTxt(f.b):''}" aria-label="${esc(f.et)} ${B}"></td>
+      <td><input class="campo${esAuto?' campo--auto':''}${f.txtB?' campo--ok':''}" inputmode="numeric" data-cifra="${f.k}b"
+            value="${esAuto ? (f.txtB || milesTxt(f.b)) : milesTxt(cif[f.k+'b'])}"
+            placeholder="${calc&&!esAuto?milesTxt(f.b):''}" aria-label="${esc(f.et)} ${B}"></td>
       <td class="cifras__v ${f.v?(f.v.d>0?'cifras__v--sube':f.v.d<0?'cifras__v--baja':''):''}" data-var="${f.k}">${f.v?esc(f.v.txt):'—'}</td>
     </tr>`;
   };
@@ -2293,7 +2374,7 @@ function bloquePresentacion(c){
   return `<details class="bloque bloque--pleg tarjeta-vidrio" data-seccion="presentacion"${seccionesAbiertas.has('presentacion')?' open':''}>
     <summary class="bloque__r">Correo de presentación <span>${esc(rot)}</span></summary>
     <div class="bloque__cuerpo">
-      <p class="sinnota">Escribe los valores de los dos años gravables; la variación se calcula sola. El saldo final sale de retenciones − impuesto, y la justificación patrimonial de los ingresos de ${B} menos el incremento del patrimonio (${B} − ${A}); las dos se pueden escribir a mano si hay que corregirlas.</p>
+      <p class="sinnota">Escribe los valores de los dos años gravables; la variación se calcula sola. El saldo final sale de retenciones − impuesto, y la justificación patrimonial se rellena sola con los ingresos de ${B} menos el incremento del patrimonio (${B} − ${A}); si el patrimonio bajó, dice «Justificado». Las dos se pueden escribir a mano si hay que corregirlas.</p>
       <table class="cifras">
         <tr><th>Concepto</th><th>Año gravable ${A}</th><th>Año gravable ${B}</th><th>Variación</th></tr>
         ${filas.map(fila).join('')}
@@ -2683,17 +2764,48 @@ function cablearCliente(c){
         cel.classList.toggle('cifras__v--sube', !!f.v && f.v.d>0);
         cel.classList.toggle('cifras__v--baja', !!f.v && f.v.d<0);
       }
-      // Los valores deducidos (saldo y justificación) se muestran de marca de
-      // agua en su propia casilla, para que se vean sin tener que escribirlos.
-      if(f.k==='sal' || f.k==='jus'){
-        const ia = $(`[data-cifra="${f.k}a"]`,raiz), ib = $(`[data-cifra="${f.k}b"]`,raiz);
+      // El saldo deducido se muestra de marca de agua en su propia casilla,
+      // para que se vea sin tener que escribirlo.
+      if(f.k==='sal'){
+        const ia = $(`[data-cifra="sala"]`,raiz), ib = $(`[data-cifra="salb"]`,raiz);
         if(ia) ia.placeholder = milesTxt(f.a);
         if(ib) ib.placeholder = milesTxt(f.b);
+      }
+      /* La justificación se RELLENA sola mientras se teclean los ingresos y
+         los patrimonios: es un valor calculado, no una sugerencia. Se respeta
+         lo escrito a mano (`cif.jusb`) y no se toca la casilla si el cursor
+         está dentro, que le borraría a alguien lo que está escribiendo. */
+      if(f.k==='jus'){
+        const cif = cifrasDe(vivo());
+        const ib = $(`[data-cifra="jusb"]`,raiz);
+        const aMano = cif.jusb!=='' && cif.jusb!=null;
+        if(ib && !aMano && document.activeElement!==ib){
+          // «Justificado» cuando el patrimonio bajó: no hay nada que calcular.
+          ib.value = f.txtB || milesTxt(f.b);
+          ib.classList.add('campo--auto');
+          ib.classList.toggle('campo--ok', !!f.txtB);
+        }
+        // Qué falta para poder calcularla, bajo el rótulo.
+        const pis = $('[data-pista="jus"]',raiz);
+        if(pis){
+          const falta = faltaJustificacion(vivo(), anioAnt());
+          // La fórmula sale del catálogo, no repetida aquí: si cambia allá,
+          // cambia en los dos sitios a la vez.
+          pis.textContent = falta.length ? `faltan: ${falta.join(', ')}`
+                                         : CONCEPTOS_DECL.find(x=>x.k==='jus').pista;
+          pis.classList.toggle('cifras__c--falta', !!falta.length);
+        }
       }
     });
   };
   $$('[data-cifra]',raiz).forEach(inp=>{
-    inp.oninput  = ()=>{ cifrasDe(vivo())[inp.dataset.cifra] = normNumeroSigno(inp.value); refrescarCifras(); };
+    inp.oninput  = ()=>{
+      cifrasDe(vivo())[inp.dataset.cifra] = normNumeroSigno(inp.value);
+      // Si se escribe en la casilla de la justificación, deja de ser
+      // automática: manda lo tecleado hasta que se vacíe otra vez.
+      if(inp.dataset.cifra==='jusb') inp.classList.toggle('campo--auto', !inp.value.trim());
+      refrescarCifras();
+    };
     inp.onchange = ()=>{ guardar(); };
   });
   $$('[data-adj]',raiz).forEach(chk=> chk.onchange = ()=>{
