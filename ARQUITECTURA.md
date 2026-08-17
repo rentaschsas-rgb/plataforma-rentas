@@ -80,7 +80,7 @@ Un único documento con lo que hoy son constantes en el código. Ponerlo aquí e
   // ── Territorio del Sheet ─────────────────────────────
   sheet: {
     nombre: "Marina Salgado Ríos",
-    correo: "marina@example.com",       // puede traer varios separados por coma
+    correo: "marina@example.com",  // puede traer varios separados por coma
     vence: "2026-08-28",           // ISO; si viene vacío se deriva del calendario DIAN
     honorarios: 380000,            // columna PRECIO ACORDADO. 0 = todavía no aceptó
     estado: "Aceptado",            // columna ESTADO: Enviado | Aceptado | (vacío)
