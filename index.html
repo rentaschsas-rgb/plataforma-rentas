@@ -382,6 +382,11 @@ button.pastilla:active{transform:scale(.94)}
    porque es una buena noticia, no una casilla a medio llenar. */
 .campo--ok{background:rgba(48,209,88,.14);color:var(--ok);font-weight:600}
 .cifras__c--falta{color:var(--alerta)}
+/* Hay una suma a medio escribir en la casilla: lo que se ve NO es todavía el
+   número que se guardó. El total está en el globo de ayuda hasta que se sale
+   del campo. Se alinea a la izquierda porque una operación se lee de
+   izquierda a derecha, no como una cifra. */
+.cifras .campo--suma{background:var(--acento-velo);text-align:left;letter-spacing:.02em}
 /* El borrador se ve tal como le va a llegar al cliente: fondo claro
    siempre, aunque la consola esté en oscuro. */
 .borrador{margin-top:calc(var(--u)*2);border:1px solid var(--linea);border-radius:var(--r-l);
@@ -2047,11 +2052,53 @@ const anioAnt = () => Number(PERIODO) - 1;
 const cifrasDe = c => c.cifras || (c.cifras = {});
 // Igual que normNumero, pero conserva el signo: el saldo puede ser a pagar.
 // Acepta «-3.540.000» y «(3.540.000)», que es como lo escribe el ayuda renta.
+// Y acepta sumas: ver esSuma/sumaCifra aquí abajo.
 function normNumeroSigno(v){
-  const s = String(v||'').trim(); if(!s) return '';
+  const s = signosAscii(v); if(!s) return '';
+  if(esSuma(s)) return sumaCifra(s);
   const neg = /^-/.test(s) || /^\(.*\)$/.test(s);
   const n = s.replace(/[^\d]/g,'');
   return n ? (neg ? -Number(n) : Number(n)) : '';
+}
+
+/* SUMAS EN LA CASILLA. Los ingresos casi nunca vienen en un solo papel: son
+   el certificado del empleador más los honorarios más los arriendos. Antes
+   eso se sumaba en la calculadora y se pegaba el total, y ahí es donde se
+   colaban los errores —y donde se perdía el rastro de de dónde salió el
+   número—. Ahora se puede escribir «30.000.000 + 4.500.000 - 200.000» en la
+   casilla y ella sola guarda el resultado.
+
+   Solo + y −, a propósito: sin multiplicar, sin paréntesis y sin decimales.
+   Un evaluador de expresiones completo aquí sería una casilla que acepta
+   cualquier cosa y devuelve algo que PARECE un número, en un cuadro que
+   termina en el correo de un cliente. */
+
+// ¿Hay una operación de verdad? Se exige un dígito ANTES del signo, para que
+// «-3.540.000» y «(3.540.000)» sigan siendo un número negativo y no una resta
+// a medio escribir.
+const esSuma = s => /\d\s*[+-]/.test(signosAscii(s));
+
+/* Un menos puede llegar de tres formas: el guion del teclado, el signo menos
+   tipográfico (−) y la raya (–) que Word y Excel ponen al autocorregir. Los
+   tres significan restar; que uno se leyera como «carácter raro que se tira»
+   convertiría una resta en una suma sin avisar. */
+const signosAscii = v => String(v||'').replace(/[−–—]/g,'-').trim();
+
+/* Suma los términos. Cada uno se limpia con la misma regla de siempre (fuera
+   puntos, comas y espacios), así «1.000.000+500000» y «1000000 + 500.000»
+   dan lo mismo. Los trozos sin dígitos —el «+» recién tecleado, por ejemplo—
+   se ignoran: hace falta para que el cuadro se actualice mientras se escribe
+   en vez de parpadear a vacío en cada pulsación. */
+function sumaCifra(s){
+  const terminos = signosAscii(s).match(/[+-]?[^+-]+/g) || [];
+  let total = 0, hubo = false;
+  terminos.forEach(t=>{
+    const d = t.replace(/[^\d]/g,'');
+    if(!d) return;
+    hubo = true;
+    total += /^\s*-/.test(t) ? -Number(d) : Number(d);
+  });
+  return hubo ? total : '';
 }
 const milesTxt = n => (n===''||n==null) ? '' : Number(n).toLocaleString('es-CO');
 /* Un valor de `cifras` como número. Normalmente ya lo es —lo guarda
@@ -2374,7 +2421,7 @@ function bloquePresentacion(c){
   return `<details class="bloque bloque--pleg tarjeta-vidrio" data-seccion="presentacion"${seccionesAbiertas.has('presentacion')?' open':''}>
     <summary class="bloque__r">Correo de presentación <span>${esc(rot)}</span></summary>
     <div class="bloque__cuerpo">
-      <p class="sinnota">Escribe los valores de los dos años gravables; la variación se calcula sola. El saldo final sale de retenciones − impuesto, y la justificación patrimonial se rellena sola con los ingresos de ${B} menos el incremento del patrimonio (${B} − ${A}); si el patrimonio bajó, dice «Justificado». Las dos se pueden escribir a mano si hay que corregirlas.</p>
+      <p class="sinnota">Escribe los valores de los dos años gravables; la variación se calcula sola. El saldo final sale de retenciones − impuesto, y la justificación patrimonial se rellena sola con los ingresos de ${B} menos el incremento del patrimonio (${B} − ${A}); si el patrimonio bajó, dice «Justificado». Las dos se pueden escribir a mano si hay que corregirlas. En cualquier casilla puedes escribir una suma —<code>30.000.000 + 4.500.000 − 200.000</code>— y al salir del campo queda el total.</p>
       <table class="cifras">
         <tr><th>Concepto</th><th>Año gravable ${A}</th><th>Año gravable ${B}</th><th>Variación</th></tr>
         ${filas.map(fila).join('')}
@@ -2800,13 +2847,30 @@ function cablearCliente(c){
   };
   $$('[data-cifra]',raiz).forEach(inp=>{
     inp.oninput  = ()=>{
-      cifrasDe(vivo())[inp.dataset.cifra] = normNumeroSigno(inp.value);
+      const n = normNumeroSigno(inp.value);
+      cifrasDe(vivo())[inp.dataset.cifra] = n;
+      /* Si lo que hay escrito es una suma, el total va al globo de ayuda y la
+         casilla se marca. El resultado no reemplaza lo tecleado hasta salir
+         del campo —hacerlo antes le borraría a alguien la operación a media
+         escritura—, así que sin esto habría que sumar de cabeza para
+         comprobar. La variación de al lado ya se recalcula con el total. */
+      const sumando = esSuma(inp.value);
+      inp.classList.toggle('campo--suma', sumando);
+      inp.title = sumando ? `= ${pesosS(n)}` : '';
       // Si se escribe en la casilla de la justificación, deja de ser
       // automática: manda lo tecleado hasta que se vacíe otra vez.
       if(inp.dataset.cifra==='jusb') inp.classList.toggle('campo--auto', !inp.value.trim());
       refrescarCifras();
     };
-    inp.onchange = ()=>{ guardar(); };
+    /* Al salir de la casilla, la suma se reemplaza por su resultado: es la
+       confirmación de qué quedó guardado. Se lee de `cifras` y no se vuelve a
+       calcular aquí, para que lo que se ve sea exactamente lo que se guardó. */
+    inp.onchange = ()=>{
+      const n = cifrasDe(vivo())[inp.dataset.cifra];
+      if(n!=='' && n!=null) inp.value = milesTxt(n);
+      inp.classList.remove('campo--suma'); inp.title = '';
+      guardar();
+    };
   });
   $$('[data-adj]',raiz).forEach(chk=> chk.onchange = ()=>{
     const v = vivo(), cif = cifrasDe(v);
