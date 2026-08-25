@@ -410,6 +410,15 @@ button.pastilla:active{transform:scale(.94)}
 .form-mov{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:calc(var(--u)*2);align-items:end}
 .form-mov[hidden]{display:none}
 .form-mov label{display:block;font-size:var(--t-xs);color:var(--tx-2);margin-bottom:6px}
+.mov-busca{display:flex;gap:var(--u)}
+.mov-busca input{flex:1}
+.mov-cli{display:flex;align-items:center;gap:var(--u);padding:calc(var(--u)*1.2) 0;border-bottom:1px solid var(--linea-suave)}
+.mov-cli:last-child{border-bottom:0}
+.mov-cli__n{flex:1;min-width:0}
+.mov-cli__n b{display:block;font-size:var(--t-s);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mov-cli__m{width:130px;text-align:right}
+.mov-resto{font-size:var(--t-xs);margin-top:8px}
+.mov-resto--mal{color:var(--riesgo)}
 
 /* ── Modal ────────────────────────────────────────────────── */
 .modal{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:calc(var(--u)*3);
@@ -645,6 +654,7 @@ select.campo--min{padding:5px 24px 5px 9px;font-size:var(--t-xs);border-radius:v
         <section class="cifras tarjeta-vidrio" aria-label="Resumen de la temporada">
           <button class="cifra cifra--riesgo" data-atajo="vencer:estado:vencida"><b id="kVencidas">0</b><span>ya vencidas</span></button>
           <button class="cifra cifra--riesgo" data-atajo="vencer:estado:esta semana"><b id="kSemana">0</b><span>vencen en 7 días</span></button>
+          <button class="cifra" data-atajo="vencer:paso:Documentos"><b id="kEnDocs">0</b><span>en fase de documentos</span></button>
           <button class="cifra cifra--alerta" data-atajo="vencer:docs:faltan"><b id="kDocs">0</b><span>esperan papeles</span></button>
           <button class="cifra cifra--ok" data-atajo="vencer:estado:presentada"><b id="kPres">0</b><span>presentadas</span></button>
           <p class="cifras__nota" id="cifrasNota"></p>
@@ -724,7 +734,11 @@ select.campo--min{padding:5px 24px 5px 9px;font-size:var(--t-xs);border-radius:v
           <button class="cuadro cuadro--riesgo cuadro--pulsable tarjeta-vidrio" data-atajo="pagos:sit:debe"><div class="cuadro__et">Por cobrar</div><div class="cuadro__n" id="kDeuda">—</div><div class="cuadro__pie" id="kDeudaN">—</div></button>
         </div>
         <div class="marco tarjeta-vidrio">
-          <div class="marco__barra"><span class="marco__cuenta" id="ctPagos"></span><button class="btn" data-limpiar="tPagos">Limpiar filtros</button></div>
+          <div class="marco__barra">
+            <span class="marco__cuenta" id="ctPagos"></span>
+            <button class="btn btn--fuerte" id="btnNuevoPago">+ Registrar pago</button>
+            <button class="btn" data-limpiar="tPagos">Limpiar filtros</button>
+          </div>
           <div class="desplaza"><table id="tPagos"></table></div>
           <div class="nada" id="nPagos" hidden><div class="nada__t">Nada coincide</div><p>Ajusta los filtros de columna.</p><button class="btn" data-limpiar="tPagos">Limpiar filtros</button></div>
         </div>
@@ -795,7 +809,16 @@ select.campo--min{padding:5px 24px 5px 9px;font-size:var(--t-xs);border-radius:v
         <div><label for="mMonto">Monto</label><input class="campo" id="mMonto" inputmode="numeric" placeholder="0" required></div>
         <div><label for="mQuien">Recibido por</label><select class="campo" id="mQuien"></select></div>
         <div><label for="mMedio">Medio</label><select class="campo" id="mMedio"></select></div>
-        <div style="grid-column:1/-1"><label for="mCliente">Cliente</label><select class="campo" id="mCliente"></select></div>
+        <div style="grid-column:1/-1">
+          <label for="mCliente">Clientes</label>
+          <div class="mov-busca">
+            <input class="campo" id="mCliente" list="mClientes" autocomplete="off" placeholder="escribe el nombre o la cédula y pulsa Agregar">
+            <button class="btn" type="button" id="btnAddCli">Agregar</button>
+          </div>
+          <datalist id="mClientes"></datalist>
+          <div id="mLista"></div>
+          <p class="sinnota" id="mResto">Sin asignar. Si una sola transacción paga a varios clientes, agrégalos todos y reparte el monto entre ellos.</p>
+        </div>
         <div style="grid-column:1/-1"><label for="mNota">Referencia</label><input class="campo" id="mNota" placeholder="opcional: número de transferencia, «abono 1 de 2»…"></div>
       </form>
       <div id="recibo" hidden></div>
@@ -918,7 +941,11 @@ const catsDe = c => [...new Set(c.documentos.map(d=>d.categoria))]
   .sort((a,b)=>{ const ia=ORDEN_CAT.indexOf(a), ib=ORDEN_CAT.indexOf(b);
                  return (ia<0?999:ia)-(ib<0?999:ib); });
 const PERSONAS = ['Johanna','Leidy','John'];
-const MEDIOS   = ['Bancolombia','Davivienda','Nequi','Daviplata','Efectivo'];
+const MEDIOS   = ['Efectivo','Nu','Nequi','Daviplata'];
+// Los movimientos viejos pueden traer un medio que ya no está en la lista
+// (Bancolombia, Davivienda). No se reescriben ni se esconden: el filtro de la
+// tabla y el desplegable del diálogo añaden los que aparezcan en los datos.
+const mediosVistos = () => [...new Set(MEDIOS.concat(MOVS.map(m=>m.medio).filter(Boolean)))];
 
 // Johanna y Leidy van como bolsa común: no está definido cómo se divide ese 70%.
 const REPARTO = [
@@ -969,6 +996,7 @@ const CALENDARIO_DIAN = [
      sheet:      {nombre, correo, vence, honorarios, grupo},   ← dueño: el Sheet
      paso:       1..6,
      noObligado: bool,   ← aceptó, pero por topes no tiene que declarar
+     cancelado:  bool,   ← se arrepintió: no la hace con nosotros
      documentos: [{id, categoria, nombre, recibido, nota}],
      hitos:      {n: {fecha}},
      notas:      [{id, texto, paso|null, origen, autor, creado}]
@@ -1036,7 +1064,17 @@ function venceDe(c){
   const n = (!dd||isNaN(dd)) ? 100 : dd;
   return (CALENDARIO_DIAN.find(x=>n>=x.desde&&n<=x.hasta)||CALENDARIO_DIAN[0]).fecha;
 }
-const pagadoDe = ced => MOVS.filter(m=>m.cedula===ced).reduce((s,m)=>s+m.monto,0);
+/* Un movimiento puede cubrir a varios clientes en una sola transacción —una
+   transferencia que paga a todo el grupo familiar—. El desglose vive en
+   `m.reparto` ([{cedula,monto}]); los movimientos de una sola cédula, que son
+   los de antes y los del caso normal, se leen como un reparto de un renglón.
+   Nadie más debe mirar `m.cedula` para saber a quién se le abonó. */
+const repartoDe = m => (m.reparto && m.reparto.length)
+  ? m.reparto.filter(r=>r.cedula)
+  : (m.cedula ? [{cedula:m.cedula, monto:m.monto}] : []);
+const cedulasDe = m => repartoDe(m).map(r=>r.cedula);
+const pagadoDe = ced => MOVS.reduce((s,m)=>
+  s + repartoDe(m).reduce((t,r)=> t + (r.cedula===ced ? (r.monto||0) : 0), 0), 0);
 
 /* Solo se le hace seguimiento de vencimiento a quien aceptó la cotización:
    a los demás no les vamos a presentar nada, y llenaban el tablero de
@@ -1049,7 +1087,12 @@ const pagadoDe = ced => MOVS.filter(m=>m.cedula===ced).reduce((s,m)=>s+m.monto,0
    cotización y al revisar los topes resulta que no tiene que declarar. Ese
    cliente ya no tiene plazo, y dejarlo en el tablero lo pintaba en rojo como
    vencido para siempre. Sale de vencimientos y sigue entero en Clientes. */
-const enTemporada = c => !c.noObligado && (c.paso >= 2 || /acept/i.test(c.sheet.estado||''));
+const enTemporada = c => !c.noObligado && !c.cancelado && (c.paso >= 2 || /acept/i.test(c.sheet.estado||''));
+
+/* Cancelado: aceptó y después se arrepintió, o se fue con otro. No se borra
+   —el expediente, los comentarios y lo que ya haya abonado son historia que
+   hay que poder consultar—, pero sale de los tableros, deja de tener plazo y
+   deja de deberle nada a nadie. Se puede deshacer. */
 
 // Honorarios que se cobran. Por defecto los del Sheet (PRECIO ACORDADO),
 // pero la plataforma puede fijar un valor propio —incluido $0 para un
@@ -1074,6 +1117,15 @@ const recargoDe = c => c.recargoDocs || 0;
 // Lo que se le cobra en total: honorarios + cargo. Es la base de saldos,
 // de la cartera y del recibo — `honorariosDe` sigue siendo solo el precio.
 const cobroDe = c => honorariosDe(c) + recargoDe(c);
+
+/* Antes de presentar la declaración no hay nada que cobrar: el trabajo no
+   está entregado, así que un saldo pendiente no es una deuda todavía. Solo
+   los clientes de «Presentado» en adelante aparecen debiendo, y solo ellos
+   suman en «Por cobrar» y en el contador de la pestaña Pagos. Los demás
+   quedan como «por presentar»: se ven, con su saldo, pero sin rojo. */
+const PASO_COBRO = PASOS.indexOf('Presentado') + 1;
+const cobrable = c => !c.cancelado && c.paso >= PASO_COBRO;
+const debeDe = (c, r) => cobrable(c) && cobroDe(c) > 0 && r.saldo > 0;
 // Fecha límite de entrega: una semana antes del vencimiento.
 function limiteEntregaDe(c){
   const f = aDate(venceDe(c)); if(!f) return '';
@@ -1100,22 +1152,25 @@ function conteoDocs(c){
 function resumen(c){
   const vence = venceDe(c), d = diasA(vence);
   const pag = pagadoDe(c.cedula);
-  const noOb = !!c.noObligado;
+  const noOb = !!c.noObligado, canc = !!c.cancelado;
+  // Ni al que no está obligado ni al que canceló hay que presentarles nada:
+  // los dos salen de plazos y de papeles pendientes, por motivos distintos.
+  const fuera = noOb || canc;
   const cd = conteoDocs(c);
   return {
-    vence, dias:d, noObligado:noOb,
+    vence, dias:d, noObligado:noOb, cancelado:canc,
     ...cd,
     // A quien no está obligado no hay que reclamarle papeles: sus documentos
     // dejan de contar como faltantes en los tableros.
-    falta: noOb ? 0 : cd.falta,
+    falta: fuera ? 0 : cd.falta,
     pagado: pag,
     saldo: Math.max(0,cobroDe(c)-pag),
     presentado: c.paso>=5,
     // Sin obligación no hay plazo que vencer: no puede salir en rojo ni sumar
     // a «ya vencidas» ni a «vencen en 7 días».
-    vencida: !noOb && c.paso<5 && d<0,
-    proxima: !noOb && c.paso<5 && d>=0 && d<=7,
-    riesgo:  !noOb && c.paso<5 && d<=7
+    vencida: !fuera && c.paso<5 && d<0,
+    proxima: !fuera && c.paso<5 && d>=0 && d<=7,
+    riesgo:  !fuera && c.paso<5 && d<=7
   };
 }
 
@@ -1267,11 +1322,12 @@ const celCliente = c => `<div class="nom">${esc(c.sheet.nombre)}</div><div class
 // El paso se sigue viendo aunque no esté obligado: dice hasta dónde se llegó
 // antes de saberlo, y quien lo marcó puede querer devolverlo.
 const celPaso    = c => `<span class="pastilla ${TONO_PASO[c.paso-1]?'pastilla--'+TONO_PASO[c.paso-1]:''}">${esc(PASOS[c.paso-1]||'—')}</span>`
-  + (c.noObligado ? ' <span class="pastilla">no obligado</span>' : '');
-const celDocs    = r => r.noObligado ? `<span class="dato">no aplica</span>`
+  + (c.noObligado ? ' <span class="pastilla">no obligado</span>' : '')
+  + (c.cancelado  ? ' <span class="pastilla pastilla--riesgo">cancelado</span>' : '');
+const celDocs    = r => (r.noObligado || r.cancelado) ? `<span class="dato">no aplica</span>`
   : r.falta ? `<span class="dato dato--alerta">faltan ${r.falta}</span>` : `<span class="dato dato--ok">completos</span>`;
 function celVence(r){
-  if(r.noObligado) return `<span class="dato">no aplica</span>`;
+  if(r.noObligado || r.cancelado) return `<span class="dato">no aplica</span>`;
   if(r.vencida) return `<span class="dato dato--riesgo">${fCorta(r.vence)} · vencida</span>`;
   if(r.proxima) return `<span class="dato dato--riesgo">${fCorta(r.vence)} · ${r.dias}d</span>`;
   if(r.presentado) return `<span class="dato">${fCorta(r.vence)}</span>`;
@@ -1379,7 +1435,7 @@ function pintar(){
   const rs = new Map(CLIENTES.map(c=>[c.cedula, resumen(c)]));
   $('#cnVencer').textContent   = CLIENTES.filter(c=>enTemporada(c) && rs.get(c.cedula).riesgo).length;
   $('#cnClientes').textContent = CLIENTES.length;
-  $('#cnPagos').textContent    = CLIENTES.filter(c=>rs.get(c.cedula).saldo>0 && cobroDe(c)>0).length;
+  $('#cnPagos').textContent    = CLIENTES.filter(c=>debeDe(c, rs.get(c.cedula))).length;
   $('#cnBancos').textContent   = MOVS.length;
 
   const f = {vencer:pintarVencer, clientes:pintarClientes, cotizador:pintarCotizador, pagos:pintarPagos, bancos:pintarBancos}[vistaActual];
@@ -1422,6 +1478,7 @@ function pintarVencer(rs){
   const t = activos.map(c=>rs.get(c.cedula));
   $('#kSemana').textContent   = t.filter(r=>r.proxima).length;
   $('#kVencidas').textContent = t.filter(r=>r.vencida).length;
+  $('#kEnDocs').textContent   = activos.filter(c=>c.paso===PASO_DOCS).length;
   $('#kDocs').textContent     = t.filter(r=>r.falta>0).length;
   $('#kPres').textContent     = t.filter(r=>r.presentado).length;
   const fV = filtros.tVencer || {};
@@ -1430,14 +1487,16 @@ function pintarVencer(rs){
     b.setAttribute('aria-pressed', String(fV[clave]===valor));
   });
 
-  const noObligados = CLIENTES.filter(c=>c.noObligado).length;
-  const sinAceptar = CLIENTES.length - activos.length - noObligados;
+  const noObligados = CLIENTES.filter(c=>c.noObligado && !c.cancelado).length;
+  const cancelados  = CLIENTES.filter(c=>c.cancelado).length;
+  const sinAceptar = CLIENTES.length - activos.length - noObligados - cancelados;
   $('#cifrasNota').textContent = !CLIENTES.length ? ''
     : [
         `Solo se cuentan los ${activos.length} que aceptaron la cotización y sí están obligados.`,
         sinAceptar ? `Otros ${sinAceptar} no han aceptado.` : '',
         noObligados ? `${noObligados} quedaron marcados como no obligados.` : '',
-        (sinAceptar||noObligados) ? 'Todos siguen en Clientes.' : ''
+        cancelados ? `${cancelados} cancelaron.` : '',
+        (sinAceptar||noObligados||cancelados) ? 'Todos siguen en Clientes.' : ''
       ].filter(Boolean).join(' ');
 
   const H = hoyCero();
@@ -1513,13 +1572,13 @@ function pintarClientes(rs){
       pinta:d=>`<span class="dato ${d.c.responsable?'':'dato--riesgo'}">${esc(d.c.responsable||'sin asignar')}</span>`},
     // «No obligado» entra como una opción más del filtro de paso: es la forma
     // natural de sacar la lista de quienes se cayeron por topes.
-    {clave:'paso',   et:'Paso',tipo:'opciones',opciones:PASOS.concat('No obligado'),
-      valor:d=>d.c.noObligado?'No obligado':PASOS[d.c.paso-1],ordenValor:d=>d.c.paso,pinta:d=>celPaso(d.c)},
+    {clave:'paso',   et:'Paso',tipo:'opciones',opciones:PASOS.concat('No obligado','Cancelado'),
+      valor:d=>d.c.cancelado?'Cancelado':d.c.noObligado?'No obligado':PASOS[d.c.paso-1],ordenValor:d=>d.c.paso,pinta:d=>celPaso(d.c)},
     {clave:'tiene',  et:'Tiene',pista:'documento',valor:d=>d.c.documentos.filter(x=>x.recibido).map(x=>x.nombre||x.categoria).join(', '),
       ordenValor:d=>d.r.docsRecibidos,
       pinta:d=>`<span class="dato ${d.r.falta?'':'dato--ok'}">${d.r.docsRecibidos}/${d.r.docsTotal}</span>`},
-    {clave:'falta',  et:'Le falta',pista:'documento',valor:d=>d.c.noObligado?'no aplica':(catsFaltantes(d.c).join(', ')||'nada'),ordenValor:d=>-d.r.falta,
-      pinta:d=>d.c.noObligado?`<span class="dato">no aplica</span>`
+    {clave:'falta',  et:'Le falta',pista:'documento',valor:d=>(d.c.noObligado||d.c.cancelado)?'no aplica':(catsFaltantes(d.c).join(', ')||'nada'),ordenValor:d=>-d.r.falta,
+      pinta:d=>(d.c.noObligado||d.c.cancelado)?`<span class="dato">no aplica</span>`
         :d.r.falta?`<span style="font-size:var(--t-xs);color:var(--alerta)">${esc(catsFaltantes(d.c).join(' · '))}</span>`:`<span class="dato dato--ok">nada</span>`},
     {clave:'vence',  et:'Vence',pista:'ago',valor:d=>fLarga(d.r.vence),ordenValor:d=>d.r.dias,pinta:d=>celVence(d.r)}
   ], datos, {orden:{clave:'cliente',dir:'asc'}, id:d=>d.c.cedula, alClic:irACliente, repintar:pintar});
@@ -1620,7 +1679,7 @@ function cotzAgregar(){
     sheet: { nombre:d.nombre, correo:d.correo, vence:'', honorarios:d.valor||0,
              cotizado:d.valor||0, estado:'Cotizado', grupo:d.grupo, responsable:'', otras:{} },
     paso: 2,                              // Cotizó
-    responsable:'', honorarioManual:null, honorarioFijo:false, noObligado:false,
+    responsable:'', honorarioManual:null, honorarioFijo:false, noObligado:false, cancelado:false,
     tareas:{}, cifras:{}, documentos:docsNuevos(), hitos:{}, notas:[], resumen:null, _cargado:false
   };
   CLIENTES = [nuevo, ...CLIENTES];
@@ -1684,21 +1743,32 @@ function pintarCotizador(){
   cotzPreview();
 }
 
+/* Cómo se le dice al equipo en qué anda un cliente con la plata. «Por
+   presentar» tapa a «debe» y a «abono parcial»: mientras no esté presentada,
+   ese saldo no se reclama. */
+function sitPago(d){
+  if(d.c.cancelado)    return 'cancelado';
+  if(!cobroDe(d.c))    return 'sin facturar';
+  if(d.r.saldo === 0)  return 'pagado';
+  if(!cobrable(d.c))   return 'por presentar';
+  return d.r.pagado > 0 ? 'abono parcial' : 'debe';
+}
+
 function pintarPagos(rs){
-  const fact = CLIENTES.reduce((s,c)=>s+cobroDe(c),0);
+  const fact = CLIENTES.reduce((s,c)=>s+(c.cancelado?0:cobroDe(c)),0);   // lo cancelado no se factura
   const rec  = MOVS.reduce((s,m)=>s+m.monto,0);
-  const deudores = CLIENTES.filter(c=>rs.get(c.cedula).saldo>0 && cobroDe(c)>0);
+  const deudores = CLIENTES.filter(c=>debeDe(c, rs.get(c.cedula)));
   $('#kFact').textContent   = pesos(fact);
   $('#kRec').textContent    = pesos(rec);
   $('#kRecPct').textContent = fact ? Math.round(rec/fact*100)+'% de lo facturado' : '—';
   $('#kDeuda').textContent  = pesos(deudores.reduce((s,c)=>s+rs.get(c.cedula).saldo,0));
-  $('#kDeudaN').textContent = `${deudores.length} clientes`;
+  $('#kDeudaN').textContent = `${deudores.length} clientes ya presentados`;
 
   const datos = CLIENTES.map(c=>({c, r:rs.get(c.cedula)}));
   const n = Tabla('tPagos', [
     {clave:'cliente',et:'Cliente',pista:'nombre o cédula',valor:d=>d.c.sheet.nombre+' '+d.c.cedula,ordenValor:d=>d.c.sheet.nombre,pinta:d=>celCliente(d.c)},
-    {clave:'paso',   et:'Paso',tipo:'opciones',opciones:PASOS.concat('No obligado'),
-      valor:d=>d.c.noObligado?'No obligado':PASOS[d.c.paso-1],ordenValor:d=>d.c.paso,pinta:d=>celPaso(d.c)},
+    {clave:'paso',   et:'Paso',tipo:'opciones',opciones:PASOS.concat('No obligado','Cancelado'),
+      valor:d=>d.c.cancelado?'Cancelado':d.c.noObligado?'No obligado':PASOS[d.c.paso-1],ordenValor:d=>d.c.paso,pinta:d=>celPaso(d.c)},
     // Muestra el TOTAL a cobrar, para que la fila cuadre con Abonado y Saldo.
     // Si trae cargo por entrega tardía, se dice debajo: un número más alto
     // que el cotizado, sin explicación, es una llamada del cliente.
@@ -1706,12 +1776,15 @@ function pintarPagos(rs){
       pinta:d=>`<span class="dato">${pesos(cobroDe(d.c))}</span>`
         + (recargoDe(d.c)?`<div class="sub">incluye ${pesos(recargoDe(d.c))} por entrega tardía</div>`:'')},
     {clave:'abon',   et:'Abonado',num:true,pista:'monto',valor:d=>d.r.pagado||'',ordenValor:d=>d.r.pagado,pinta:d=>`<span class="dato ${d.r.pagado?'dato--ok':''}">${d.r.pagado?pesos(d.r.pagado):'—'}</span>`},
-    {clave:'saldo',  et:'Saldo',num:true,pista:'monto',valor:d=>d.r.saldo||'',ordenValor:d=>d.r.saldo,pinta:d=>`<span class="dato ${d.r.saldo?'dato--riesgo':'dato--ok'}">${d.r.saldo?pesos(d.r.saldo):'al día'}</span>`},
-    {clave:'sit',    et:'Situación',tipo:'opciones',opciones:['pagado','debe','abono parcial','sin facturar'],
-      valor:d=>!cobroDe(d.c)?'sin facturar':d.r.saldo===0?'pagado':d.r.pagado>0?'abono parcial':'debe',
+    // El saldo de quien no ha presentado no va en rojo: no se le puede cobrar.
+    {clave:'saldo',  et:'Saldo',num:true,pista:'monto',valor:d=>d.r.saldo||'',ordenValor:d=>d.r.saldo,
+      pinta:d=>d.c.cancelado ? `<span class="dato">—</span>`
+        : `<span class="dato ${!d.r.saldo?'dato--ok':cobrable(d.c)?'dato--riesgo':''}">${d.r.saldo?pesos(d.r.saldo):'al día'}</span>`},
+    {clave:'sit',    et:'Situación',tipo:'opciones',opciones:['pagado','debe','abono parcial','por presentar','cancelado','sin facturar'],
+      valor:d=>sitPago(d),
       ordenValor:d=>d.r.saldo,
-      pinta:d=>{const v=!cobroDe(d.c)?['','sin facturar']:d.r.saldo===0?['ok','pagado']:d.r.pagado>0?['alerta','abono parcial']:['riesgo','debe'];
-        return `<span class="pastilla ${v[0]?'pastilla--'+v[0]:''}">${v[1]}</span>`;}}
+      pinta:d=>{const v=sitPago(d), cl={pagado:'ok','abono parcial':'alerta',debe:'riesgo'}[v]||'';
+        return `<span class="pastilla ${cl?'pastilla--'+cl:''}">${v}</span>`;}}
   ], datos, {orden:{clave:'saldo',dir:'desc'}, id:d=>d.c.cedula, alClic:irACliente, repintar:pintar});
   $('#ctPagos').textContent = `${n} de ${CLIENTES.length} clientes`;
   $('#nPagos').hidden = n>0;
@@ -1745,14 +1818,24 @@ function pintarBancos(){
   const nombreDe = ced => (CLIENTES.find(c=>c.cedula===ced)||{sheet:{}}).sheet.nombre || 'Sin asignar';
   const n = Tabla('tBancos', [
     {clave:'fecha',et:'Fecha',pista:'2026',valor:m=>fLarga(m.fecha),ordenValor:m=>m.fecha,pinta:m=>`<span class="dato">${fLarga(m.fecha)}</span>`},
-    {clave:'cli',  et:'Cliente',pista:'nombre',valor:m=>nombreDe(m.cedula)+' '+m.cedula,
-      pinta:m=>`<div class="nom">${esc(nombreDe(m.cedula))}</div><div class="sub">${esc(m.cedula||'—')}</div>`},
+    // Un movimiento puede repartirse entre varios clientes; el filtro busca
+    // por cualquiera de ellos, y la celda los enseña con lo que le tocó a cada uno.
+    {clave:'cli',  et:'Cliente',pista:'nombre',
+      valor:m=>repartoDe(m).map(r=>nombreDe(r.cedula)+' '+r.cedula).join(' ') || 'Sin asignar',
+      pinta:m=>{ const rp = repartoDe(m);
+        if(!rp.length) return `<div class="nom">Sin asignar</div>`;
+        if(rp.length===1) return `<div class="nom">${esc(nombreDe(rp[0].cedula))}</div><div class="sub">${esc(rp[0].cedula)}</div>`;
+        return `<div class="nom">${rp.length} clientes</div><div class="sub">${
+          rp.map(r=>`${esc(nombreDe(r.cedula))} · ${pesos(r.monto||0)}`).join('<br>')}</div>`; }},
     {clave:'monto',et:'Monto',num:true,pista:'monto',valor:m=>m.monto,ordenValor:m=>m.monto,pinta:m=>`<span class="dato">${pesos(m.monto)}</span>`},
     {clave:'quien',et:'Recibido por',tipo:'opciones',opciones:PERSONAS,valor:m=>m.quien,pinta:m=>`<span class="pastilla pastilla--curso">${esc(m.quien)}</span>`},
-    {clave:'medio',et:'Medio',tipo:'opciones',opciones:MEDIOS,valor:m=>m.medio,pinta:m=>`<span class="dato">${esc(m.medio)}</span>`},
+    {clave:'medio',et:'Medio',tipo:'opciones',opciones:mediosVistos,valor:m=>m.medio,pinta:m=>`<span class="dato">${esc(m.medio)}</span>`},
     {clave:'ref',  et:'Referencia',pista:'texto',valor:m=>m.referencia,pinta:m=>`<span style="color:var(--tx-2)">${esc(m.referencia||'—')}</span>`},
     {clave:'conc', et:'Conciliado',tipo:'opciones',opciones:['sí','no'],valor:m=>m.conciliado?'sí':'no',
       pinta:m=>`<button class="pastilla ${m.conciliado?'pastilla--ok':''}" data-accion="conc" data-id="${esc(m.id)}" title="Marcar como conciliado">${m.conciliado?'sí':'marcar'}</button>`},
+    {clave:'editar',et:'',valor:()=>'',pinta:m=>puedeEditarMov(m)
+      ? `<button class="pastilla" data-accion="editar" data-id="${esc(m.id)}" title="Editar movimiento" aria-label="Editar movimiento">✎</button>`
+      : `<span class="sub" title="Solo lo corrige quien lo registró">—</span>`},
     {clave:'quitar',et:'',valor:()=>'',pinta:m=>`<button class="pastilla" data-accion="borrar" data-id="${esc(m.id)}" title="Eliminar movimiento" aria-label="Eliminar movimiento">✕</button>`}
   ], MOVS, {orden:{clave:'fecha',dir:'desc'}, repintar:pintar});
   $('#ctBancos').textContent = `${n} de ${MOVS.length} movimientos`;
@@ -1765,6 +1848,7 @@ document.addEventListener('click', e=>{
   const i = MOVS.findIndex(x=>x.id===b.dataset.id); if(i<0) return;
   // `guardar()` explícito: pintar ya no escribe (ver pintar()).
   if(b.dataset.accion==='conc'){ MOVS[i].conciliado = !MOVS[i].conciliado; guardar(); pintar(); }
+  if(b.dataset.accion==='editar'){ abrirMov(MOVS[i]); }
   if(b.dataset.accion==='borrar'){
     const [q] = MOVS.splice(i,1); guardar(); pintar();
     brindis(`Movimiento de ${pesos(q.monto)} eliminado.`, ()=>MOVS.splice(i,0,q));
@@ -1936,7 +2020,7 @@ const pedirEnvioUltimoDia    = c => pedirEnvio('ultimodia', c);
 function bloquePedir(c){
   // Sin el expediente traído no se sabe qué falta: el resumen da un número,
   // no los nombres, y el correo tiene que decir cuáles son.
-  if(c.noObligado || (NUBE && !c._cargado)) return '';
+  if(c.noObligado || c.cancelado || (NUBE && !c._cargado)) return '';
   const faltan = faltantesDe(c);
   const correos = correosDe(c);
   const ult = ultimaSolicitud(c);
@@ -2475,7 +2559,7 @@ function autorActual(){ return PERFIL?.nombre || USUARIO?.email || 'Equipo'; }
 
 function pintarCliente(c){
   const r = resumen(c);
-  const movs = MOVS.filter(m=>m.cedula===c.cedula);
+  const movs = MOVS.filter(m=>cedulasDe(m).includes(c.cedula));
   const esAdmin = PERFIL?.rol === 'admin';
   const hon = honorariosDe(c);
   if(!hitosAbiertos.size) hitosAbiertos.add(c.paso);
@@ -2485,7 +2569,8 @@ function pintarCliente(c){
   $('#cabeceraAcc').innerHTML = '<button class="btn" id="btnVolver">← Volver a la lista</button>';
   $('#btnVolver').onclick = ()=>history.length>1 ? history.back() : irA('clientes');
 
-  const situacion = c.noObligado ? ['','no obligada a declarar']
+  const situacion = c.cancelado ? ['riesgo','cancelada por el cliente']
+    : c.noObligado ? ['','no obligada a declarar']
     : r.presentado ? ['ok','presentada'] : r.vencida ? ['riesgo','vencida']
     : r.proxima ? ['riesgo','vence esta semana'] : ['','en plazo'];
 
@@ -2599,6 +2684,10 @@ function pintarCliente(c){
             <dt>No obligado<br><span class="sub" style="display:block;max-width:22ch">Aceptó, pero por topes no tiene que declarar</span></dt>
             <dd><button class="sw" role="switch" aria-checked="${c.noObligado?'true':'false'}" data-noobligado
                   aria-label="Marcar como no obligado a declarar"></button></dd></div>
+          <div class="par">
+            <dt>Cancelado<br><span class="sub" style="display:block;max-width:22ch">Se arrepintió: no la hace con nosotros. Se puede deshacer</span></dt>
+            <dd><button class="sw" role="switch" aria-checked="${c.cancelado?'true':'false'}" data-cancelado
+                  aria-label="Marcar el cliente como cancelado"></button></dd></div>
           <div class="par"><dt>Vence</dt><dd>${c.noObligado?'no aplica':`${fLarga(r.vence)}${r.presentado?'':` · ${r.dias}d`}`}</dd></div>
           <div class="par"><dt>Documentos</dt><dd>${c.noObligado?'no aplica':(r.falta?`faltan ${r.falta} categorías`:'completos')}</dd></div>
           <div class="par"><dt>Responsable</dt><dd>
@@ -2629,10 +2718,15 @@ function pintarCliente(c){
               : `<span style="color:var(--alerta)">+ ${pesos(recargoDe(c))}</span>`}</dd></div>` : ''}
           ${recargoDe(c) ? `<div class="par"><dt>Total a cobrar</dt><dd>${pesos(cobroDe(c))}</dd></div>` : ''}
           <div class="par"><dt>Abonado</dt><dd>${pesos(r.pagado)}</dd></div>
-          <div class="par"><dt>Saldo</dt><dd style="color:${r.saldo?'var(--riesgo)':'var(--ok)'}">${r.saldo?pesos(r.saldo):'al día'}</dd></div>
+          <div class="par"><dt>Saldo</dt><dd style="color:${!r.saldo?'var(--ok)':cobrable(c)?'var(--riesgo)':'var(--tx-2)'}">${
+            r.saldo ? pesos(r.saldo) + (cobrable(c)?'':' <span class="sub">(aún no se cobra)</span>') : 'al día'}</dd></div>
         </dl>
-        ${movs.length?`<div style="margin-top:14px">${movs.map(m=>
-          `<div class="par"><dt style="font-size:var(--t-xs)">${fLarga(m.fecha)} · ${esc(m.quien)}</dt><dd>${pesos(m.monto)}</dd></div>`).join('')}</div>`:''}
+        ${movs.length?`<div style="margin-top:14px">${movs.map(m=>{
+          const parte = repartoDe(m).filter(r=>r.cedula===c.cedula).reduce((t,r)=>t+(r.monto||0),0);
+          const compartido = repartoDe(m).length > 1;
+          return `<div class="par"><dt style="font-size:var(--t-xs)">${fLarga(m.fecha)} · ${esc(m.quien)}${
+            compartido?`<span class="sub" style="display:block">parte de un pago de ${pesos(m.monto)}</span>`:''
+          }</dt><dd>${pesos(parte)}</dd></div>`; }).join('')}</div>`:''}
       </div>
 
       <div class="bloque tarjeta-vidrio">
@@ -3004,6 +3098,23 @@ function cablearCliente(c){
       : `${c.sheet.nombre}: vuelve a estar obligado.`);
   };
 
+  /* Cancelado. Mismo trato que «no obligado»: deja constancia de quién y
+     cuándo, porque es lo primero que se pregunta cuando el cliente vuelve.
+     No borra nada; el expediente y lo abonado siguen ahí. */
+  const swCanc = $('[data-cancelado]',raiz);
+  if(swCanc) swCanc.onclick = ()=>{
+    c.cancelado = !c.cancelado;
+    c.notas.unshift({id:idNuevo('n'),
+      texto: c.cancelado
+        ? 'CANCELADO por el cliente: se arrepintió de hacerla con nosotros. Sale de vencimientos y deja de tener saldo por cobrar.'
+        : 'Se reactiva el cliente: vuelve a vencimientos y a la cartera.',
+      paso:null, origen:'equipo', autor:autorActual(), creado:hoyISO()});
+    guardar(); pintarCliente(c);
+    brindis(c.cancelado
+      ? `${c.sheet.nombre}: cancelado. Sale de los tableros, pero el expediente queda.`
+      : `${c.sheet.nombre}: reactivado.`);
+  };
+
   const selResp = $('[data-responsable]',raiz);
   if(selResp) selResp.onchange = ()=>{ c.responsable = selResp.value; guardar(); brindis(c.responsable?`Responsable: ${c.responsable}.`:'Sin responsable asignado.'); };
 
@@ -3281,6 +3392,8 @@ function importar(texto){
       // Que el Sheet siga diciendo «Aceptado» no lo vuelve a obligar: eso se
       // supo aquí, revisando los topes, y reimportar no puede deshacerlo.
       noObligado:      antes?.noObligado ?? false,
+      // Que el Sheet lo siga trayendo no lo resucita: canceló aquí.
+      cancelado:       antes?.cancelado ?? false,
       tareas:     antes?.tareas     || {},
       // Las cifras del correo de presentación las teclea el equipo: son
       // territorio de la plataforma y reimportar el Sheet no las toca.
@@ -3542,6 +3655,12 @@ document.addEventListener('click', e=>{
   const tabla = TABLA_DE[vista];
   filtros[tabla] = filtros[tabla] || {};
   filtros[tabla][clave] = filtros[tabla][clave]===valor ? '' : valor;
+  // Si el atajo pide una etapa que estaba apagada, la tabla saldría vacía sin
+  // explicación: encenderla es lo que la persona quiso decir al tocar la cifra.
+  if(clave==='paso' && filtros[tabla][clave]){
+    const n = PASOS.indexOf(valor) + 1;
+    if(n && etapasOcultas.delete(n)) guardarEtapas();
+  }
   irA(vista);
 });
 document.addEventListener('click', e=>{
@@ -3581,66 +3700,186 @@ document.addEventListener('keydown', e=>{
 
 $('#mFecha').value = hoyISO();
 $('#mQuien').innerHTML = PERSONAS.map(p=>`<option>${p}</option>`).join('');
-$('#mMedio').innerHTML = MEDIOS.map(m=>`<option>${m}</option>`).join('');
-function refrescarSelectClientes(){
-  $('#mCliente').innerHTML = '<option value="">— sin asignar —</option>' +
-    [...CLIENTES].sort((a,b)=>a.sheet.nombre.localeCompare(b.sheet.nombre,'es'))
-      .map(c=>`<option value="${esc(c.cedula)}">${esc(c.sheet.nombre)}</option>`).join('');
+
+// Rellena un desplegable dejando dentro el valor que ya traía el movimiento,
+// aunque sea de una lista vieja (medio «Bancolombia», alguien que ya no está).
+function opciones(sel, lista, valor){
+  const ops = valor && !lista.includes(valor) ? lista.concat(valor) : lista;
+  sel.innerHTML = ops.map(x=>`<option>${esc(x)}</option>`).join('');
+  if(valor) sel.value = valor;
 }
+
+/* ── Los clientes de un movimiento ─────────────────────────────
+   Ya no es un desplegable con los noventa clientes: se busca por nombre o
+   cédula. Y son varios, porque una sola transferencia puede pagar a todo un
+   grupo familiar; cada renglón lleva cuánto le toca a cada uno. Con un solo
+   cliente el renglón sigue al monto total y no hay nada que repartir.
+   ────────────────────────────────────────────────────────────── */
+let movCli = [];        // [{cedula, monto}] — el reparto que se está armando
+
+function refrescarSelectClientes(){
+  $('#mClientes').innerHTML = [...CLIENTES]
+    .sort((a,b)=>a.sheet.nombre.localeCompare(b.sheet.nombre,'es'))
+    .map(c=>`<option value="${esc(c.sheet.nombre)} · ${esc(c.cedula)}"></option>`).join('');
+}
+
+const nombreCli = ced => (CLIENTES.find(c=>c.cedula===ced)||{sheet:{}}).sheet.nombre || 'Sin asignar';
+
+// Del texto escrito a una cédula: vale lo que pone el datalist
+// («Nombre · 10000001»), la cédula pelada, o un nombre que solo case con uno.
+function cedulaEscrita(txt){
+  const t = String(txt||'').trim(); if(!t) return '';
+  const m = t.match(/(\d[\d.]*)\s*$/);
+  if(m){ const ced = m[1].replace(/\./g,''); if(CLIENTES.some(c=>c.cedula===ced)) return ced; }
+  const b = t.toLowerCase();
+  const ex = CLIENTES.filter(c=>(c.sheet.nombre||'').toLowerCase() === b);
+  if(ex.length === 1) return ex[0].cedula;
+  const pa = CLIENTES.filter(c=>(c.sheet.nombre||'').toLowerCase().includes(b));
+  return pa.length === 1 ? pa[0].cedula : '';
+}
+
+const sumaCli = () => movCli.reduce((s,r)=>s+(r.monto||0),0);
+
+function pintarMovCli(){
+  const total = normNumero($('#mMonto').value);
+  if(movCli.length === 1) movCli[0].monto = total;   // uno solo se lo lleva todo
+
+  $('#mLista').innerHTML = movCli.map((r,i)=>`
+    <div class="mov-cli">
+      <div class="mov-cli__n"><b>${esc(nombreCli(r.cedula))}</b><span class="sub">${esc(r.cedula)}</span></div>
+      ${movCli.length>1
+        ? `<input class="campo mov-cli__m" data-mcli="${i}" inputmode="numeric" value="${r.monto?Number(r.monto).toLocaleString('es-CO'):''}" aria-label="Monto de ${esc(nombreCli(r.cedula))}">`
+        : `<span class="dato">${pesos(total)}</span>`}
+      <button class="btn btn--icono" type="button" data-quitacli="${i}" aria-label="Quitar a ${esc(nombreCli(r.cedula))}">✕</button>
+    </div>`).join('');
+
+  const resto = total - sumaCli(), n = $('#mResto');
+  if(!movCli.length){
+    n.className = 'sinnota';
+    n.textContent = 'Sin asignar. Si una sola transacción paga a varios clientes, agrégalos todos y reparte el monto entre ellos.';
+  }else if(movCli.length === 1){
+    n.className = 'sinnota';
+    n.textContent = 'Todo el monto se le abona a este cliente. Agrega otro si la transacción paga a más de uno.';
+  }else{
+    n.className = 'mov-resto' + (resto === 0 ? '' : ' mov-resto--mal');
+    n.textContent = resto === 0 ? 'El reparto cuadra con el monto.'
+      : resto > 0 ? `Faltan ${pesos(resto)} por repartir.`
+                  : `El reparto se pasa ${pesos(-resto)} del monto.`;
+  }
+}
+
+function agregarCli(){
+  const ced = cedulaEscrita($('#mCliente').value);
+  if(!ced){ $('#mCliente').focus(); brindis('No encuentro ese cliente. Escógelo de la lista.'); return; }
+  if(movCli.some(r=>r.cedula===ced)){ $('#mCliente').value=''; return; }
+  // El que entra se lleva lo que quede sin repartir, que es el caso normal.
+  movCli.push({cedula:ced, monto:Math.max(0, normNumero($('#mMonto').value) - sumaCli())});
+  $('#mCliente').value = '';
+  pintarMovCli();
+}
+
+$('#btnAddCli').onclick = agregarCli;
+$('#mCliente').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); agregarCli(); } });
+// Escoger del datalist con el ratón no dispara Enter: ahí se agrega solo.
+$('#mCliente').addEventListener('change', ()=>{ if(cedulaEscrita($('#mCliente').value)) agregarCli(); });
+$('#mLista').addEventListener('click', e=>{
+  const b = e.target.closest('[data-quitacli]'); if(!b) return;
+  movCli.splice(Number(b.dataset.quitacli), 1); pintarMovCli();
+});
+$('#mLista').addEventListener('input', e=>{
+  const el = e.target.closest('[data-mcli]'); if(!el) return;
+  const i = Number(el.dataset.mcli);
+  movCli[i].monto = normNumero(el.value);
+  pintarMovCli();
+  const nuevo = $(`#mLista [data-mcli="${i}"]`);
+  if(nuevo){ nuevo.focus(); if(nuevo.setSelectionRange) nuevo.setSelectionRange(nuevo.value.length, nuevo.value.length); }
+});
+
 $('#mMonto').addEventListener('input', e=>{
   const n = e.target.value.replace(/[^\d]/g,'');
   e.target.value = n ? Number(n).toLocaleString('es-CO') : '';
+  pintarMovCli();
 });
 /* ── Diálogo de movimiento ─────────────────────────────────────
    Dos estados: el formulario, y el recibo de lo que se acaba de
    registrar. El recibo solo aparece cuando el servidor confirmó.
    ────────────────────────────────────────────────────────────── */
+/* Quién puede corregir un movimiento: quien lo registró, y el admin —que es
+   el único que además puede borrarlo, y el que responde por la conciliación—.
+   Los movimientos de antes de que se guardara el autor (y los de muestra) no
+   tienen `creadoPor`: esos quedan solo para el admin. */
+const puedeEditarMov = m => !NUBE || PERFIL?.rol === 'admin' || (!!m.creadoPor && m.creadoPor === USUARIO?.uid);
+
+let movEditando = null;   // el movimiento que se está corrigiendo, si lo hay
+
 function estadoMovFormulario(){
+  const ed = !!movEditando;
   $('#recibo').hidden = true;
   $('#formMov').hidden = false;
   $('#btnGuardarMov').hidden = false;
   $('#btnGuardarMov').disabled = false;
-  $('#btnGuardarMov').textContent = 'Registrar';
+  $('#btnGuardarMov').textContent = ed ? 'Guardar cambios' : 'Registrar';
   $('#btnOtroMov').hidden = true;
   $('#btnListoMov').hidden = true;
   $('#avisoMov').className = 'aviso';
-  $('#avisoMov').textContent = 'Queda sin conciliar hasta que lo marques en la tabla.';
+  $('#avisoMov').textContent = ed
+    ? 'Corriges el movimiento para todos: los tres ven el cambio.'
+    : 'Queda sin conciliar hasta que lo marques en la tabla.';
 }
 
-function abrirMov(){
-  $('#mFecha').value = hoyISO();
-  $('#mMonto').value = '';
-  $('#mNota').value  = '';
+function abrirMov(mov){
+  movEditando = mov || null;
+  $('#movT').textContent = mov ? 'Editar movimiento' : 'Nuevo movimiento';
+  refrescarSelectClientes();
+  opciones($('#mQuien'), PERSONAS, mov ? mov.quien : '');
+  opciones($('#mMedio'), MEDIOS,   mov ? mov.medio : '');
+  $('#mFecha').value = mov ? mov.fecha : hoyISO();
+  $('#mMonto').value = mov ? Number(mov.monto||0).toLocaleString('es-CO') : '';
+  $('#mNota').value  = mov ? (mov.referencia||'') : '';
+  $('#mCliente').value = '';
+  movCli = mov ? repartoDe(mov).map(r=>({cedula:r.cedula, monto:r.monto||0})) : [];
+  pintarMovCli();
   estadoMovFormulario();
   $('#modalMov').hidden = false;
   $('#mMonto').focus();
 }
-const cerrarMov = ()=>{ $('#modalMov').hidden = true; };
+const cerrarMov = ()=>{ $('#modalMov').hidden = true; movEditando = null; };
 
-$('#btnNuevoMov').onclick  = abrirMov;
-$('#btnNuevoMov2').onclick = abrirMov;
+$('#btnNuevoMov').onclick  = ()=>abrirMov();
+$('#btnNuevoMov2').onclick = ()=>abrirMov();
+$('#btnNuevoPago').onclick = ()=>abrirMov();
 $('#btnCerrarMov').onclick = cerrarMov;
 $('#btnListoMov').onclick  = cerrarMov;
-$('#btnOtroMov').onclick   = ()=>{ $('#mMonto').value=''; $('#mNota').value=''; estadoMovFormulario(); $('#mMonto').focus(); };
+$('#btnOtroMov').onclick   = ()=>{
+  const f = $('#mFecha').value, q = $('#mQuien').value, md = $('#mMedio').value;
+  abrirMov();                                   // casi siempre es la misma tanda:
+  $('#mFecha').value = f; $('#mQuien').value = q; $('#mMedio').value = md;
+};
 $('#modalMov').onclick = e=>{ if(e.target===$('#modalMov')) cerrarMov(); };
 
-function pintarRecibo(mov){
-  const c = CLIENTES.find(x=>x.cedula===mov.cedula);
+function pintarRecibo(mov, editado){
+  const rp = repartoDe(mov);
+  const saldoDe = ced => {
+    const c = CLIENTES.find(x=>x.cedula===ced);
+    if(!c) return '';
+    const s = Math.max(0, cobroDe(c) - pagadoDe(ced));
+    return cobroDe(c) ? (s ? pesos(s) : 'al día') : 'sin valor acordado';
+  };
   $('#recibo').className = 'recibo';
   $('#recibo').innerHTML = `
-    <div class="recibo__r">Movimiento registrado</div>
+    <div class="recibo__r">Movimiento ${editado ? 'actualizado' : 'registrado'}</div>
     <div class="recibo__n">${pesos(mov.monto)}</div>
     <div class="recibo__q">recibidos por ${esc(mov.quien)}</div>
     <dl class="recibo__dl">
       <div class="recibo__l"><dt>Fecha</dt><dd>${fLarga(mov.fecha)}</dd></div>
       <div class="recibo__l"><dt>Medio</dt><dd>${esc(mov.medio)}</dd></div>
-      <div class="recibo__l"><dt>Cliente</dt><dd>${c?esc(c.sheet.nombre):'sin asignar'}</dd></div>
+      ${!rp.length ? '<div class="recibo__l"><dt>Cliente</dt><dd>sin asignar</dd></div>' : ''}
       ${mov.referencia?`<div class="recibo__l"><dt>Referencia</dt><dd>${esc(mov.referencia)}</dd></div>`:''}
-      ${c?`<div class="recibo__l"><dt>Saldo del cliente</dt><dd>${
-        (()=>{ const s=Math.max(0,cobroDe(c)-pagadoDe(c.cedula));
-               return cobroDe(c) ? (s?pesos(s):'al día') : 'sin valor acordado'; })()
-      }</dd></div>`:''}
-    </dl>`;
+      ${rp.map(r=>`<div class="recibo__l"><dt>${esc(nombreCli(r.cedula))}${
+          rp.length>1?` · ${pesos(r.monto||0)}`:''}</dt><dd>${saldoDe(r.cedula)}</dd></div>`).join('')}
+    </dl>
+    ${rp.length ? `<p class="sinnota" style="margin-top:10px">${rp.length>1
+        ? 'A la derecha, el saldo que le queda a cada uno.' : 'A la derecha, el saldo que le queda.'}</p>` : ''}`;
   $('#recibo').hidden = false;
 }
 
@@ -3649,18 +3888,45 @@ $('#formMov').onsubmit = async e=>{
   const monto = normNumero($('#mMonto').value);
   if(!(monto>0)){ $('#mMonto').focus(); return; }
 
-  const mov = {id:idNuevo('m'), fecha:$('#mFecha').value, cedula:$('#mCliente').value, monto,
-    quien:$('#mQuien').value, medio:$('#mMedio').value, referencia:$('#mNota').value.trim(), conciliado:false};
+  // Con varios clientes el reparto tiene que cuadrar con el monto: si no, la
+  // suma de abonos no coincidiría con lo que entró a la cuenta.
+  if(movCli.length > 1 && sumaCli() !== monto){
+    $('#avisoMov').className = 'aviso aviso--mal';
+    $('#avisoMov').textContent = `El reparto suma ${pesos(sumaCli())} y el movimiento es de ${pesos(monto)}.`;
+    return;
+  }
+  if(movCli.length === 1) movCli[0].monto = monto;
+
+  const cuerpo = {
+    fecha: $('#mFecha').value,
+    cedula: movCli[0]?.cedula || '',                     // el primero, para lo de siempre
+    reparto: movCli.length > 1 ? movCli.map(r=>({cedula:r.cedula, monto:r.monto})) : [],
+    monto,
+    quien: $('#mQuien').value, medio: $('#mMedio').value,
+    referencia: $('#mNota').value.trim()
+  };
+
+  const editando = movEditando;
+  const antes = editando ? {...editando} : null;
+  let mov;
+
+  if(editando){
+    mov = editando;
+    Object.assign(mov, cuerpo, {editadoPor: USUARIO?.uid || '', editado: hoyISO()});
+  }else{
+    mov = {id:idNuevo('m'), ...cuerpo, conciliado:false, creadoPor: USUARIO?.uid || ''};
+    MOVS.push(mov);
+  }
 
   $('#btnGuardarMov').disabled = true;
   $('#btnGuardarMov').textContent = 'Guardando…';
-  MOVS.push(mov);
 
   const r = await guardar();
 
   if(r && r.ok === false){
-    // No quedó guardado: se saca de la memoria para no mentir en pantalla.
-    const i = MOVS.findIndex(x=>x.id===mov.id); if(i>=0) MOVS.splice(i,1);
+    // No quedó guardado: se deshace en memoria para no mentir en pantalla.
+    if(editando){ for(const k of Object.keys(mov)) delete mov[k]; Object.assign(mov, antes); }
+    else { const i = MOVS.findIndex(x=>x.id===mov.id); if(i>=0) MOVS.splice(i,1); }
     pintar();
     $('#avisoMov').className = 'aviso aviso--mal';
     $('#avisoMov').textContent = 'No se guardó. ' + r.error;
@@ -3669,9 +3935,10 @@ $('#formMov').onsubmit = async e=>{
     return;
   }
 
+  movEditando = null;
   pintar();
   $('#formMov').hidden = true;
-  pintarRecibo(mov);
+  pintarRecibo(mov, !!editando);
   $('#btnGuardarMov').hidden = true;
   $('#btnOtroMov').hidden = false;
   $('#btnListoMov').hidden = false;
@@ -3708,7 +3975,7 @@ const vacioEspejo = () => ({doc:'', plat:'', docs:{}, hitos:{}, notas:{}});
 const platSig = x => firma({
   paso: x.paso, responsable: x.responsable||'',
   honorarioManual: x.honorarioManual??null, honorarioFijo: x.honorarioFijo??false,
-  noObligado: x.noObligado??false,
+  noObligado: x.noObligado??false, cancelado: x.cancelado??false,
   recargoDocs: x.recargoDocs||0, recargoDocsFecha: x.recargoDocsFecha||'',
   tareas: x.tareas||{}, cifras: x.cifras||{}
 });
@@ -3770,6 +4037,7 @@ function escucharClientes(){
         honorarioManual: dat.honorarioManual ?? null,
         honorarioFijo:   dat.honorarioFijo ?? false,
         noObligado:      dat.noObligado ?? false,
+        cancelado:       dat.cancelado ?? false,
         recargoDocs:     dat.recargoDocs || 0,
         recargoDocsFecha:dat.recargoDocsFecha || '',
         tareas:  dat.tareas || {},
@@ -3800,6 +4068,7 @@ function escucharClientes(){
         honorarioManual: base.honorarioManual ?? null,
         honorarioFijo:   base.honorarioFijo ?? false,
         noObligado:      base.noObligado ?? false,
+        cancelado:       base.cancelado ?? false,
         recargoDocs:     base.recargoDocs || 0,
         recargoDocsFecha:base.recargoDocsFecha || '',
         tareas:  base.tareas || {},
@@ -3975,14 +4244,15 @@ async function escribirDiferencia(){
     }
 
     c.resumen = resumenDe(c);
-    const cuerpo = {sheet:c.sheet, paso:c.paso, responsable:c.responsable||'', honorarioManual:c.honorarioManual??null, honorarioFijo:c.honorarioFijo??false, noObligado:c.noObligado??false, recargoDocs:c.recargoDocs||0, recargoDocsFecha:c.recargoDocsFecha||'', tareas:c.tareas||{}, cifras:c.cifras||{}, resumen:c.resumen};
+    const cuerpo = {sheet:c.sheet, paso:c.paso, responsable:c.responsable||'', honorarioManual:c.honorarioManual??null, honorarioFijo:c.honorarioFijo??false, noObligado:c.noObligado??false, cancelado:c.cancelado??false, recargoDocs:c.recargoDocs||0, recargoDocsFecha:c.recargoDocsFecha||'', tareas:c.tareas||{}, cifras:c.cifras||{}, resumen:c.resumen};
     const j = firma(cuerpo);
     if(e.doc !== j){ const ps = platSig(c); lote.set(ref, {...cuerpo, ...sello}, {merge:true}); alConfirmar.push(()=>{ e.doc=j; e.plat=ps; }); n++; }
   }
 
   for(const m of MOVS){
     const {id, ...cuerpo} = m, j = firma(cuerpo);
-    if(ESPEJO.movs[id] !== j){ lote.set(refMovs().doc(id), {...cuerpo, creadoPor:USUARIO.uid}, {merge:true}); alConfirmar.push(()=>{ESPEJO.movs[id]=j}); n++; }
+    // `creadoPor` es de quien lo registró: corregirlo no cambia de dueño.
+    if(ESPEJO.movs[id] !== j){ lote.set(refMovs().doc(id), {...cuerpo, creadoPor: cuerpo.creadoPor || USUARIO.uid}, {merge:true}); alConfirmar.push(()=>{ESPEJO.movs[id]=j}); n++; }
   }
   for(const id of Object.keys(ESPEJO.movs)){
     if(!MOVS.some(m=>m.id===id)){ lote.delete(refMovs().doc(id)); alConfirmar.push(()=>{delete ESPEJO.movs[id]}); n++; }
@@ -4189,7 +4459,7 @@ $('#btnDemo').onclick = ()=>{ demo(); refrescarSelectClientes(); guardar(); enru
 
 // Sello de versión: sirve para confirmar, a simple vista y en consola, qué
 // build está cargado (y descartar que sea una copia vieja en caché).
-const BUILD = 'v14 · 2026-08-10 · Recordatorio automático + cargo por entrega tardía';
+const BUILD = 'v16 · 2026-08-25 · Cifra «en fase de documentos» que filtra al tocarla · pagos repartidos y editables';
 try{ const lb = document.getElementById('logoBuild'); if(lb) lb.textContent = BUILD; }catch(_){}
 console.log('%cRentas build '+BUILD, 'color:#5b8;font-weight:bold');
 

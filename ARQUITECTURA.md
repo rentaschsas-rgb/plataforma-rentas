@@ -94,6 +94,8 @@ Un único documento con lo que hoy son constantes en el código. Ponerlo aquí e
 
   // ── Territorio de la plataforma ──────────────────────
   paso: 5,                          // 1..6, paso actual
+  noObligado: false,                // aceptó, pero por topes no tiene que declarar
+  cancelado: false,                 // se arrepintió: no la hace con nosotros
   responsable: "Johanna",           // quién lleva el cliente; se EDITA en la
                                     // plataforma (arranca del Sheet, luego no lo pisa)
   tareas: {                         // listas de chequeo por paso (mapa {tarea:true})
@@ -124,6 +126,8 @@ Un único documento con lo que hoy son constantes en el código. Ponerlo aquí e
 ```
 
 `resumen` está **desnormalizado a propósito**: las tablas de lista necesitan ordenar y filtrar por saldo y por documentos faltantes. Sin esto, pintar 86 filas exigiría leer 86 subcolecciones — lento y caro. Lo recalcula una Cloud Function cada vez que cambia un documento o un movimiento.
+
+**Cliente cancelado.** `cancelado: true` es el cliente que aceptó y después se arrepintió —se fue con otro, o decidió no declarar con nosotros—. **No se borra nada**: el expediente, los comentarios y lo que ya haya abonado son historia que hay que poder consultar, y volver atrás es un clic. Lo que cambia es que sale de los tableros: no cuenta en vencimientos (`enTemporada`), no se le reclaman papeles (`resumen.falta = 0`, sin rojo ni «vence esta semana»), **no factura ni debe** (`cobrable` lo excluye, así que no suma en «Por cobrar» ni en lo facturado) y en las tablas queda con la pastilla *cancelado*, que también sirve de filtro. Como con *no obligado*, el interruptor deja un **comentario automático** en el expediente: quién lo canceló y cuándo es lo primero que se pregunta si el cliente vuelve.
 
 #### `/clientes/{cedula}/documentos/{docId}`
 
@@ -156,6 +160,8 @@ Las respuestas viven en una hoja aparte del Sheet, **RESPUESTAS** (una fila por 
 Además, **si quien lo corre es admin**, ese mismo flujo **pisa el honorario** con la columna **Precio Neto** de RESPUESTAS cuando trae valor y difiere del actual — así se corrige un pago equivocado sin reimportar `elaborar`. El preview avisa cuántos pagos cambiarán antes de confirmar.
 
 **Honorarios: override de plataforma.** `sheet.honorarios` es el valor del Sheet (PRECIO ACORDADO), pero la plataforma puede fijar uno propio en `honorarioManual` (null = usar el del Sheet; **0 es válido**, para un cliente regalado). El helper `honorariosDe(c)` es la única fuente de verdad para cobros/saldos. Se edita en el bloque *Cobro* del expediente (solo admin) con un ↺ para volver al valor del Sheet. RESPUESTAS escribe `honorarioManual`, **pero respeta `honorarioFijo`**: si el honorario se fijó a mano, RESPUESTAS no lo pisa (así el $0 regalado no se revierte al re-pegar).
+
+**Solo debe el que ya tiene la declaración presentada.** El saldo se calcula para todos, pero **la deuda empieza en el paso *Presentado***: antes de eso el trabajo no está entregado y cobrarlo sería cobrar por adelantado. Lo decide `cobrable(c)` —paso ≥ *Presentado* y no cancelado— y de ahí salen las tres cosas que la oficina mira: la situación de la fila (*por presentar* tapa a *debe* y a *abono parcial*), el cuadro **«Por cobrar»** y el contador de la pestaña *Pagos*. El saldo de quien todavía no presentó **se sigue viendo, pero sin rojo**: es información, no cartera.
 
 Nota: la columna **RESPONSABLE** de `elaborar` es un `TRUE`/`FALSE` (marca de contacto del grupo), **no** un nombre; por eso `responsable` **no** se hereda del Sheet ni en la importación ni en la migración: arranca vacío y se asigna en la plataforma.
 
@@ -236,15 +242,32 @@ Colección **de primer nivel**, no subcolección de cliente. La conciliación pr
 {
   fecha: "2026-07-15",
   cedula: "10000001",         // "" si aún no se identifica al cliente
-  monto: 380000,
+  reparto: [                  // [] cuando el pago es de un solo cliente
+    {cedula: "10000001", monto: 200000},
+    {cedula: "10000067", monto: 180000}
+  ],
+  monto: 380000,              // el total que entró; con reparto, es su suma
   quien: "Johanna",           // una de config.reparto[].personas
-  medio: "Bancolombia",
+  medio: "Nu",                // Efectivo | Nu | Nequi | Daviplata
   referencia: "Transf. 4471",
   conciliado: false,
   creado: Timestamp,
-  creadoPor: "uid…"
+  creadoPor: "uid…",          // quién lo registró: no cambia al corregirlo
+  editadoPor: "uid…"          // quién lo corrigió por última vez
 }
 ```
+
+**Un pago puede ser de varios clientes.** Una sola transferencia paga a todo un grupo familiar, y antes había que partirla a mano en dos movimientos que ya no cuadraban con el extracto. Ahora el movimiento es uno solo y `reparto` dice cuánto le toca a cada quien. Reglas:
+
+- **`repartoDe(m)` es la única forma de saber a quién se le abonó.** Los movimientos de un solo cliente —los de antes y el caso normal— no llevan `reparto`, y el helper los devuelve como un reparto de un renglón. Nadie debe mirar `m.cedula` directamente.
+- El diálogo **exige que el reparto cuadre con el monto** antes de guardar: si no, la suma de los abonos no coincidiría con lo que entró a la cuenta.
+- `monto` sigue siendo el total de la transacción, que es lo que usa la conciliación entre los tres socios: ese reparto no cambia porque el pago venga de un cliente o de cuatro.
+
+**El cliente se busca, no se escoge de una lista.** El campo del diálogo es un buscador por nombre o cédula (`datalist` + `cedulaEscrita`); con noventa clientes, el desplegable era inservible.
+
+**Quién puede corregir un movimiento.** El botón ✎ de la tabla de bancos lo ve **quien lo registró** (`creadoPor`) y el **admin**, que es quien además puede borrarlo y quien responde por la conciliación. Los movimientos anteriores a que se guardara el autor no tienen `creadoPor`: esos quedan solo para el admin. Corregir **no cambia de dueño** — `creadoPor` se conserva y el corrector queda en `editadoPor`.
+
+**Medios de pago:** `Efectivo`, `Nu`, `Nequi`, `Daviplata`. Los movimientos viejos con un medio que ya no está en la lista (`Bancolombia`, `Davivienda`) **no se reescriben**: el filtro de la tabla y el desplegable del diálogo añaden los que aparezcan en los datos, para no perderlos ni obligar a reclasificar el histórico.
 
 ### `/sincronizaciones/{id}`
 
