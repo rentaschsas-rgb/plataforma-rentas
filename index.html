@@ -3661,7 +3661,13 @@ document.addEventListener('click', e=>{
     const n = PASOS.indexOf(valor) + 1;
     if(n && etapasOcultas.delete(n)) guardarEtapas();
   }
-  irA(vista);
+  // `irA` navega cambiando el hash, y quien repinta es el `hashchange`. Pero
+  // las cifras viven DENTRO de la vista que abren: el hash ya valía «#/vencer»,
+  // asignarle lo mismo no dispara nada y el filtro quedaba puesto en memoria
+  // con la tabla intacta. Por eso ninguna cifra filtraba, mientras que tocar
+  // una semana sí: ese manejador llama a `pintar()` de frente.
+  const destino = '#/'+vista;
+  if(location.hash === destino) pintar(); else location.hash = destino;
 });
 document.addEventListener('click', e=>{
   const b = e.target.closest('[data-limpiar]'); if(!b) return;
@@ -4459,7 +4465,7 @@ $('#btnDemo').onclick = ()=>{ demo(); refrescarSelectClientes(); guardar(); enru
 
 // Sello de versión: sirve para confirmar, a simple vista y en consola, qué
 // build está cargado (y descartar que sea una copia vieja en caché).
-const BUILD = 'v16 · 2026-08-25 · Cifra «en fase de documentos» que filtra al tocarla · pagos repartidos y editables';
+const BUILD = 'v17 · 2026-08-25 · Las cifras del tablero vuelven a filtrar la tabla';
 try{ const lb = document.getElementById('logoBuild'); if(lb) lb.textContent = BUILD; }catch(_){}
 console.log('%cRentas build '+BUILD, 'color:#5b8;font-weight:bold');
 
