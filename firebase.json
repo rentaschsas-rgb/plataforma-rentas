@@ -11,6 +11,7 @@
       "firestore.indexes.json",
       "ARQUITECTURA.md",
       "**/.*",
+      "**/.*/**",
       "**/node_modules/**"
     ],
     "cleanUrls": true,
