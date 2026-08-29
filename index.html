@@ -850,16 +850,24 @@ const PASOS = ['Invitado','Cotizó','Documentos','Elaboración','Presentado','Pa
 // etapa. Se guardan por cliente
 // en c.tareas (territorio de la plataforma).
 const CHECKLIST_PASO = {
+  // Lo que se hace apenas llegan los papeles por primera vez.
   [PASOS.indexOf('Documentos')+1]: [
+    'Tomar pantallazos y dejarlos en un doc de Drive',
+    'Descargar reporte, facturas y sugerida de la DIAN',
     'Colorear reporte',
-    'Tomar pantallazos',
-    'Verificar documentos contra reporte',
-    'Verificar documentos contra pantallazos',
-    'Solicitar documentos faltantes (si aplica)'
+    'Organizar papeles en la carpeta de Drive'
   ],
+  // Primero el trabajo sobre lo que llegó (5 a 8), y después la segunda
+  // vuelta: lo que el cliente manda cuando se le pidió lo que faltaba.
   [PASOS.indexOf('Elaboración')+1]: [
     'Ingresar papeles al ayuda renta',
-    'Verificar valores contra reporte'
+    'Verificar papeles contra reporte y marcar Ok o Falta',
+    'Verificar papeles contra pantallazos y anotar en la plataforma',
+    'Enviar correo con papeles faltantes',
+    'Guardar papeles faltantes en la carpeta de Drive',
+    'Ingresar papeles faltantes al ayuda renta',
+    'Anotar comentarios para revisión final',
+    'Hacer correcciones de revisión final'
   ],
   [PASOS.indexOf('Presentado')+1]: [
     'Borrador generado',
@@ -869,6 +877,19 @@ const CHECKLIST_PASO = {
     'Correo de presentación enviado al cliente'
   ]
 };
+
+/* Subpasos que cambiaron de nombre. La lista de chequeo se guarda por texto,
+   así que un expediente viejo tiene marcada la clave antigua: al pintar se
+   consulta también el alias para que no se pierda lo que ya estaba hecho.
+   Aquí solo se lee; el nombre nuevo se guarda cuando alguien vuelva a tocar
+   ese chulito. Si el subpaso está explícitamente desmarcado, manda eso. */
+const TAREA_ALIAS = {
+  'Tomar pantallazos y dejarlos en un doc de Drive':              'Tomar pantallazos',
+  'Verificar papeles contra reporte y marcar Ok o Falta':         'Verificar documentos contra reporte',
+  'Verificar papeles contra pantallazos y anotar en la plataforma':'Verificar documentos contra pantallazos',
+  'Enviar correo con papeles faltantes':                          'Solicitar documentos faltantes (si aplica)'
+};
+const tareaHecha = (c,t) => !!(c.tareas?.[t] ?? (TAREA_ALIAS[t] ? c.tareas?.[TAREA_ALIAS[t]] : false));
 
 // Guía de colores para «Colorear reporte» (se muestra como tooltip).
 const GUIA_COLORES = [
@@ -1879,7 +1900,7 @@ const URL_BACKEND = 'https://script.google.com/macros/s/AKfycbwxjnJdw3tNn69k0bFt
 const TOKEN_BACKEND = 'rnt-2026-9f3a7c1e5b48';   // debe coincidir con TOKEN_PLATAFORMA en apps_script.js
 
 const PASO_DOCS = PASOS.indexOf('Documentos') + 1;
-const TAREA_SOLICITAR = 'Solicitar documentos faltantes (si aplica)';
+const TAREA_SOLICITAR = 'Enviar correo con papeles faltantes';
 
 // El Sheet admite varios correos en la misma celda (coma, punto y coma,
 // espacio o barra). Todos son del mismo cliente: se les escribe a todos.
@@ -2592,7 +2613,7 @@ function pintarCliente(c){
           const ns = notasDe(c,n);
           const fecha = c.hitos[n]?.fecha;
           const chk = CHECKLIST_PASO[n];
-          const chkDone = chk ? chk.filter(t=>c.tareas?.[t]).length : 0;
+          const chkDone = chk ? chk.filter(t=>tareaHecha(c,t)).length : 0;
           return `<details class="hito hito--${estado}" data-hito="${n}"${hitosAbiertos.has(n)?' open':''}>
             <summary class="hito__cab">
               <span class="hito__n">${n<c.paso?'✓':n}</span>
@@ -2606,7 +2627,7 @@ function pintarCliente(c){
               ${chk?`<div class="chequeo">${chk.map(t=>{
                 const guia = TAREA_GUIA[t];
                 return `<div class="chequeo__fila">
-                  <label class="chequeo__i"><input type="checkbox" data-tarea="${esc(t)}"${c.tareas?.[t]?' checked':''}><span>${esc(t)}</span></label>
+                  <label class="chequeo__i"><input type="checkbox" data-tarea="${esc(t)}"${tareaHecha(c,t)?' checked':''}><span>${esc(t)}</span></label>
                   ${guia?`<span class="pista-info" tabindex="0" role="img" aria-label="Guía de colores para colorear el reporte">i<span class="pista-info__pop">${guia.map(g=>`<span class="pista-info__l"><i style="background:${g.color}"></i>${esc(g.et)}</span>`).join('')}</span></span>`:''}
                 </div>`;
               }).join('')}</div>`:''}
@@ -2849,7 +2870,7 @@ function cablearCliente(c){
   /* Pedir los documentos que faltan. Abre el correo con el mensaje ya
      redactado y deja constancia en el expediente: quién lo pidió y cuándo
      es exactamente lo que se pregunta tres semanas después. También marca
-     la tarea «Solicitar documentos faltantes» del paso Documentos. */
+     el subpaso «Enviar correo con papeles faltantes» del paso Elaboración. */
   const registrarSolicitud = (faltan, medio, cobrar)=>{
     /* Sobre el cliente VIVO, no sobre el `c` de la clausura. Cada snapshot de
        Firestore reemplaza los objetos de CLIENTES por otros nuevos; si entre
