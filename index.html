@@ -135,6 +135,10 @@ option,optgroup{background:var(--solido);color:var(--tx)}
 .btn--fuerte:hover{background:var(--acento);filter:brightness(1.12)}
 .btn--icono{padding:9px 12px}
 .btn--chico{padding:5px 12px;font-size:var(--t-xs)}
+/* Lo que no se puede deshacer no se pinta igual que lo demás. */
+.btn--peligro{border-color:var(--riesgo);color:var(--riesgo)}
+.btn--peligro:hover{background:var(--riesgo);border-color:transparent;color:#fff}
+.btn--peligro:disabled{opacity:.45;cursor:not-allowed}
 .btn[disabled]{opacity:.4;pointer-events:none}
 
 .campo{border:1px solid var(--linea);background:var(--vidrio-alto);border-radius:var(--r-m);
@@ -790,6 +794,7 @@ select.campo--min{padding:5px 24px 5px 9px;font-size:var(--t-xs);border-radius:v
     <div class="modal__pie">
       <span class="aviso" id="avisoImp">El paso, los documentos y los comentarios no se pisan al reimportar.</span>
       <button class="btn" id="btnDemo">Datos de muestra</button>
+      <button class="btn btn--peligro" id="btnLimpiarMuestra" hidden>Eliminar datos de muestra</button>
       <button class="btn" id="btnDocsResp">Actualizar desde RESPUESTAS</button>
       <button class="btn btn--fuerte" id="btnHacerImp">Importar</button>
     </div>
@@ -2741,6 +2746,14 @@ function pintarCliente(c){
         </dl>
         <p class="sinnota" style="margin-top:12px">Estos campos se editan en el Sheet, no aquí.</p>
       </div>
+
+      ${esAdmin ? `<div class="bloque tarjeta-vidrio">
+        <div class="bloque__r">Eliminar</div>
+        <p class="sinnota">Borra el expediente entero: papeles, hitos, comentarios y los pagos que sean solo suyos. <b>No se puede deshacer.</b></p>
+        <p class="sinnota" style="margin-top:8px">Si el cliente existe pero ya no va, usa «Cancelada» arriba: eso lo saca de los tableros y conserva la historia. Esto es para lo que nunca debió estar aquí.</p>
+        <p class="sinnota" style="margin-top:8px">Ojo: si la fila sigue en el Sheet, el próximo «Enviar a la plataforma» lo vuelve a crear.</p>
+        <div style="margin-top:12px"><button class="btn btn--peligro" data-eliminarcliente>Eliminar este cliente</button></div>
+      </div>` : ''}
     </div>
   </div>`;
 
@@ -2764,6 +2777,27 @@ const pintarNota = n => {
 
 function cablearCliente(c){
   const raiz = $('#v-cliente');
+
+  // eliminar el cliente (admin)
+  const btnBorrar = $('[data-eliminarcliente]', raiz);
+  if(btnBorrar) btnBorrar.onclick = async ()=>{
+    const ok = await confirmarBorrado(
+      `Eliminar a ${c.sheet.nombre || c.cedula}`,
+      `<p>Se borra el expediente de <b>${esc(c.sheet.nombre || '(sin nombre)')}</b> (C.C. ${esc(c.cedula)}): papeles, hitos, comentarios y los pagos que sean solo suyos.</p>
+       <p style="margin-top:12px"><b>No se puede deshacer.</b></p>`,
+      'ELIMINAR');
+    if(!ok) return;
+    btnBorrar.disabled = true; btnBorrar.textContent = 'Eliminando…';
+    try{
+      const nombre = c.sheet.nombre || c.cedula;
+      await eliminarCliente(c.cedula);
+      brindis(`${nombre} eliminado.`);
+      irA('clientes');
+    }catch(err){
+      btnBorrar.disabled = false; btnBorrar.textContent = 'Eliminar este cliente';
+      alarma('No pude eliminar: ' + err.message);
+    }
+  };
 
   // recordar qué está desplegado, para que no se cierre al repintar
   $$('[data-seccion]',raiz).forEach(d=> d.ontoggle = ()=>{
@@ -3435,6 +3469,7 @@ function aplicarImportacion(nuevos){
 
 const abrirModal  = ()=>{ $('#modal').hidden=false; $('#pegar').focus(); };
 const cerrarModal = ()=>{ $('#modal').hidden=true; };
+$('#btnLimpiarMuestra').onclick = limpiarMuestra;
 $('#btnCerrarModal').onclick = cerrarModal;
 $('#modal').onclick = e=>{ if(e.target===$('#modal')) cerrarModal(); };
 // Importar es en dos tiempos: primero se muestra qué se entendió, y
@@ -4165,6 +4200,111 @@ async function cargarExpediente(c){
   }
 }
 
+/* ── Borrado de clientes ──────────────────────────────────────
+   `escribirDiferencia` NO borra clientes: recorre CLIENTES y escribe lo que
+   cambió, así que sacar uno de memoria solo lo hacía reaparecer con el
+   siguiente snapshot. Borrar de verdad es esto, y en este orden:
+
+     1. las tres subcolecciones —Firestore no borra en cascada: si se va el
+        documento padre primero, los papeles y las notas quedan colgando y ya
+        no hay quién los alcance;
+     2. los movimientos que sean SOLO suyos (si el pago estaba repartido con
+        otro cliente se queda: esa plata sí entró, solo se le quita su parte);
+     3. por último el documento del cliente.
+
+   Es irreversible y solo para admin; las reglas lo exigen también en el
+   servidor, para que no dependa de que la pantalla se porte bien. */
+async function eliminarCliente(ced){
+  if(!NUBE || !USUARIO) throw new Error('No hay sesión en la nube.');
+  const ref = refClientes().doc(ced);
+
+  for(const sub of ['documentos','hitos','notas']){
+    const snap = await ref.collection(sub).get();
+    // Mismas tandas cortas que al escribir: cada borrado evalúa las reglas, y
+    // las reglas leen /usuarios. Un lote largo se rechaza entero.
+    for(let i=0; i<snap.docs.length; i+=POR_TANDA){
+      const lote = db.batch();
+      snap.docs.slice(i, i+POR_TANDA).forEach(d => lote.delete(d.ref));
+      await lote.commit();
+    }
+  }
+
+  for(const m of MOVS.filter(m => cedulasDe(m).includes(ced))){
+    const otros = repartoDe(m).filter(r => r.cedula !== ced);
+    if(otros.length) await refMovs().doc(m.id).update({reparto: otros, cedula: firebase.firestore.FieldValue.delete()});
+    else            await refMovs().doc(m.id).delete();
+  }
+
+  await ref.delete();
+
+  // El espejo también: si se queda, la próxima escritura compara contra un
+  // cliente que ya no existe y vuelve a mandarlo.
+  delete ESPEJO.clientes[ced];
+  CLIENTES = CLIENTES.filter(c => c.cedula !== ced);
+  refrescarSelectClientes();
+}
+
+/* Confirmación escrita. Un `confirm()` del navegador se acepta sin leerlo;
+   tener que escribir la palabra obliga a mirar qué se va a borrar. */
+function confirmarBorrado(titulo, cuerpoHTML, palabra){
+  return new Promise(resolver => {
+    const m = document.createElement('div');
+    m.className = 'modal';
+    m.innerHTML = `<div class="modal__caja" role="dialog" aria-modal="true">
+      <div class="modal__cab">
+        <div class="modal__t">${esc(titulo)}</div>
+        <button class="btn btn--icono" data-no aria-label="Cancelar">✕</button>
+      </div>
+      <div class="modal__cu">
+        ${cuerpoHTML}
+        <p class="sinnota" style="margin-top:12px">Escribe <b>${esc(palabra)}</b> para confirmar.</p>
+        <input class="campo" data-palabra autocomplete="off" spellcheck="false" aria-label="Palabra de confirmación">
+      </div>
+      <div class="modal__pie">
+        <button class="btn" data-no>Cancelar</button>
+        <button class="btn btn--peligro" data-si disabled>Eliminar</button>
+      </div>
+    </div>`;
+    document.body.appendChild(m);
+    const inp = $('[data-palabra]', m), si = $('[data-si]', m);
+    const cerrar = v => { m.remove(); resolver(v); };
+    inp.oninput = ()=>{ si.disabled = inp.value.trim().toUpperCase() !== palabra.toUpperCase(); };
+    inp.onkeydown = e =>{ if(e.key==='Enter' && !si.disabled){ e.preventDefault(); cerrar(true); } };
+    $$('[data-no]', m).forEach(b => b.onclick = ()=>cerrar(false));
+    si.onclick = ()=>cerrar(true);
+    m.onclick = e =>{ if(e.target===m) cerrar(false); };
+    inp.focus();
+  });
+}
+
+/* Deshacer el estropicio de haber pulsado «Datos de muestra» con la sesión
+   abierta: se van los doce inventados y nada más. La lista se enseña antes de
+   confirmar, para que se pueda comprobar que ahí no hay ningún cliente real. */
+async function limpiarMuestra(){
+  const muestra = CLIENTES.filter(esMuestra);
+  if(!muestra.length){ brindis('No hay datos de muestra en la base.'); return; }
+  const ok = await confirmarBorrado(
+    'Eliminar datos de muestra',
+    `<p>Se eliminarán <b>${muestra.length}</b> clientes de muestra, con sus papeles, comentarios y los pagos inventados que los acompañan:</p>
+     <p class="sinnota" style="margin-top:8px">${muestra.map(c=>`${esc(c.sheet.nombre||'(sin nombre)')} · ${esc(c.cedula)}`).join('<br>')}</p>
+     <p style="margin-top:12px">Los clientes reales no se tocan. <b>No se puede deshacer.</b></p>`,
+    'ELIMINAR');
+  if(!ok) return;
+  const btn = $('#btnLimpiarMuestra');
+  if(btn){ btn.disabled = true; btn.textContent = 'Eliminando…'; }
+  let hechos = 0;
+  try{
+    for(const c of muestra){ await eliminarCliente(c.cedula); hechos++; }
+    cerrarModal();
+    brindis(`${hechos} clientes de muestra eliminados.`);
+  }catch(err){
+    alarma(`Eliminé ${hechos} de ${muestra.length} y me quedé atascada: ${err.message}. Vuelve a pulsar el botón para seguir con los que faltan.`);
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = 'Eliminar datos de muestra'; }
+    refrescar();
+  }
+}
+
 /* ── Escritura: solo la diferencia ────────────────────────── */
 
 // Devuelve una promesa que se resuelve cuando Firestore CONFIRMA la
@@ -4375,7 +4515,10 @@ function arrancarNube(){
     $('#app').hidden = false;
     $('#cuenta').innerHTML = `<span class="cuenta__n">${esc(perfil.nombre || u.email)}</span><button type="button" class="cuenta__salir" id="btnSalir2">Salir</button>`;
     $('#btnSalir2').onclick = ()=>{ auth.signOut(); location.reload(); };
-    if($('#btnDemo')) $('#btnDemo').hidden = true;   // con datos reales no hay muestra que valga
+    // Fuera del DOM, no solo oculto: con datos reales no hay muestra que valga.
+    $('#btnDemo')?.remove();
+    // Limpiar la muestra que ya se coló es cosa de admin (y las reglas lo exigen).
+    if($('#btnLimpiarMuestra')) $('#btnLimpiarMuestra').hidden = perfil.rol !== 'admin';
 
     poblarSelectorPeriodo();
     enrutar();                 // cablea la cabecera y pinta, haya cambiado el hash o no
@@ -4394,8 +4537,10 @@ function arrancarNube(){
    ninguna real, y los correos en example.com, que es un dominio reservado y
    no puede recibir nada. Si algún día hace falta más muestra, se inventa;
    nunca se copia de la hoja. */
-function demo(){
-  const base = [
+/* La lista vive FUERA de `demo()` a propósito: `CEDULAS_MUESTRA` —lo que hay
+   que poder borrar cuando la muestra se coló entre los datos reales— se deriva
+   de ella, y así no puede quedarse desfasada de lo que la muestra crea. */
+const MUESTRA_BASE = [
     ['10000001','Marina Salgado Ríos','marina@example.com','A',5,[1,1,1,1,1,1],380000,[['Johanna','2026-07-14','Radicada. Saldo a favor de $412.000.',5]]],
     ['10000067','Camilo Salgado Ríos','camilo@example.com','A',5,[1,1,1,1,1,1],380000,[['Leidy','2026-07-15','Se le envió cuenta de cobro. Paga el viernes.',6]]],
     ['10000006','Gustavo Melo Arias','gustavo@example.com','',3,[1,1,0,1,0,1],450000,[['cliente','2026-07-18','El banco no me ha dado el certificado de retenciones.',3]]],
@@ -4408,7 +4553,13 @@ function demo(){
     ['10000081','Paola Serna Mejía','paola@example.com','',2,[1,1,0,0,0,0],350000,[]],
     ['10000005','Héctor Valbuena Cruz','hector@example.com','',5,[1,1,1,1,1,1],470000,[['Johanna','2026-07-08','Saldo a pagar $1.240.000. Ya tiene el recibo.',5]]],
     ['10000018','Nubia Cortés Rivas','nubia@example.com','',3,[1,0,1,1,0,1],390000,[]]
-  ];
+];
+// Las únicas cédulas que pueden venir de la muestra y de ningún otro lado.
+const CEDULAS_MUESTRA = new Set(MUESTRA_BASE.map(f => f[0]));
+const esMuestra = c => CEDULAS_MUESTRA.has(c.cedula);
+
+function demo(){
+  const base = MUESTRA_BASE;
   CLIENTES = base.map(([cedula,nombre,correo,grupo,paso,docs,honorarios,notas])=>{
     // Documentos de muestra: los universales más un par de categorías típicas,
     // para que el expediente demo se vea como uno real ya con respuestas.
@@ -4444,7 +4595,20 @@ function demo(){
     {id:'m3',fecha:'2026-07-18',cedula:'10000005',monto:200000,quien:'John',   medio:'Davivienda', referencia:'Abono 1 de 2', conciliado:false}
   ];
 }
-$('#btnDemo').onclick = ()=>{ demo(); refrescarSelectClientes(); guardar(); enrutar(); cerrarModal(); brindis('Datos de muestra cargados.'); };
+/* La muestra es SOLO para la pantalla sin conexión. Con la sesión abierta,
+   `demo()` reemplaza CLIENTES por doce inventados y el `guardar()` siguiente
+   los escribe en Firestore al lado de los reales; y como el escritor de
+   diferencias nunca borra clientes, allí se quedaban para siempre. Por eso se
+   corta aquí, además de sacar el botón del DOM al entrar: `hidden` no impide
+   un clic programático ni sobrevive a que alguien lo desmarque. */
+$('#btnDemo').onclick = ()=>{
+  if(NUBE){
+    alarma('Los datos de muestra son solo para el modo sin conexión: con la sesión abierta se mezclarían con los clientes reales.');
+    return;
+  }
+  demo(); refrescarSelectClientes(); guardar(); enrutar(); cerrarModal();
+  brindis('Datos de muestra cargados.');
+};
 
 /* La compuerta dice en qué punto de la temporada estás antes de entrar.
    Es lo primero que ven cada mañana; que diga algo verdadero. */

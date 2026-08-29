@@ -50,9 +50,21 @@ service cloud.firestore {
         allow update: if esAdmin()
           || (activo() && request.resource.data.get('sheet', null) == resource.data.get('sheet', null));
         allow create: if esAdmin();
-        allow delete: if false;
+        // Borrar un cliente es lo último que se hace, pero tiene que poder
+        // hacerse: los datos de muestra cargados por error no se iban de
+        // ninguna otra forma. Solo admin, y la consola borra antes las
+        // subcolecciones (Firestore no borra en cascada).
+        allow delete: if esAdmin();
 
-        match /{sub=**} {
+        /* OJO con el comodín: en `rules_version = '2'` un `{x=**}` casa con
+           CERO o más segmentos, así que un `match /{sub=**}` aquí dentro
+           casaba TAMBIÉN con el documento del cliente. Como las reglas se
+           combinan con OR, eso le daba `write` —y por tanto delete y pisar
+           `sheet`— a cualquier usuario activo, anulando el `allow delete` y
+           el guardarraíl de `sheet` de aquí arriba.
+           `{sub}/{id}` son dos segmentos exactos: nunca puede casar con el
+           padre. documentos, hitos y notas son planas, así que basta. */
+        match /{sub}/{id} {
           allow read, write: if activo();
         }
       }
@@ -78,7 +90,8 @@ service cloud.firestore {
       allow delete: if false;
 
       // documentos, hitos y notas: territorio de la plataforma.
-      match /{sub=**} {
+      // Dos segmentos exactos, no `{sub=**}`: ver la nota de arriba.
+      match /{sub}/{id} {
         allow read, write: if activo();
       }
     }
