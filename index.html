@@ -44,7 +44,7 @@ html[data-tema="oscuro"]{
   --linea-suave:rgba(255,255,255,.05);
   --tx:#E9F0F9; --tx-2:#9CB2CD; --tx-3:#6A829E;
   --acento:#0A84FF; --acento-tx:#5AB0FF; --acento-velo:rgba(10,132,255,.18);
-  --ok:#30D158; --alerta:#FF9F0A; --riesgo:#FF453A;
+  --ok:#30D158; --alerta:#FF9F0A; --riesgo:#FF453A; --revision:#BF5AF2;
   --sombra:0 1px 1px rgba(0,0,0,.25),0 8px 28px rgba(0,0,0,.35);
   --brillo:inset 0 1px 0 rgba(255,255,255,.06);
 }
@@ -61,7 +61,7 @@ html[data-tema="claro"]{
   --linea-suave:rgba(9,26,48,.06);
   --tx:#0A1A2E; --tx-2:#53688A; --tx-3:#7D91AE;
   --acento:#007AFF; --acento-tx:#0062CC; --acento-velo:rgba(0,122,255,.12);
-  --ok:#248A3D; --alerta:#B25E00; --riesgo:#D70015;
+  --ok:#248A3D; --alerta:#B25E00; --riesgo:#D70015; --revision:#8944AB;
   --sombra:0 1px 1px rgba(9,26,48,.04),0 8px 26px rgba(9,26,48,.09);
   --brillo:inset 0 1px 0 rgba(255,255,255,.7);
 }
@@ -176,6 +176,7 @@ select.campo{cursor:pointer;appearance:none;padding-right:26px;
 .cifra b{font-size:var(--n-xl);font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
 .cifra span{font-size:var(--t-xs);color:var(--tx-3);white-space:nowrap}
 .cifra--riesgo b{color:var(--riesgo)} .cifra--alerta b{color:var(--alerta)} .cifra--ok b{color:var(--ok)}
+.cifra--revision b{color:var(--revision)}
 .cifras__nota{margin-left:auto;font-size:var(--t-xs);color:var(--tx-3);line-height:1.6;max-width:34ch;text-align:right}
 
 /* ── Calendario por semanas ───────────────────────────────── */
@@ -255,6 +256,7 @@ td.num,th.num{text-align:right}
 .pastilla--alerta{background:color-mix(in srgb,var(--alerta) 16%,transparent);color:var(--alerta)}
 .pastilla--riesgo{background:color-mix(in srgb,var(--riesgo) 16%,transparent);color:var(--riesgo)}
 .pastilla--ok{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+.pastilla--revision{background:color-mix(in srgb,var(--revision) 16%,transparent);color:var(--revision)}
 button.pastilla{cursor:pointer;transition:transform .2s var(--resorte)}
 button.pastilla:active{transform:scale(.94)}
 
@@ -567,7 +569,22 @@ select.campo--min{padding:5px 24px 5px 9px;font-size:var(--t-xs);border-radius:v
 .chequeo__i input{width:16px;height:16px;accent-color:var(--acento);cursor:pointer;flex:none}
 .chequeo__i input:checked + span{color:var(--tx-3);text-decoration:line-through}
 .chequeo__fila{display:flex;align-items:center;gap:6px}
-.chequeo__fila .chequeo__i{flex:1}
+.chequeo__fila .chequeo__i{flex:1;flex-wrap:wrap}
+/* Quién lo marcó y cuándo, en chiquito al lado del subpaso: la fila no
+   crece de alto, y el dato está sin tener que abrir nada. */
+.chequeo__firma{font-size:var(--t-xs);color:var(--tx-3);margin-left:auto;padding-left:8px;
+  white-space:nowrap;font-variant-numeric:tabular-nums}
+.chequeo__i input:checked + span + .chequeo__firma{text-decoration:none}
+/* El chulito del verificador: mismo tamaño, tono propio y apagado para
+   quien no tiene el rol (se ve el estado, no se puede mover). */
+.chequeo__rev{display:flex;align-items:center;gap:5px;flex:none;padding:6px 8px;
+  border-radius:var(--r-s);font-size:var(--t-xs);color:var(--tx-3);cursor:pointer}
+.chequeo__rev input{width:15px;height:15px;accent-color:var(--revision);cursor:pointer;flex:none}
+.chequeo__rev--si{color:var(--revision)}
+.chequeo__rev input:disabled{cursor:default;opacity:.5}
+.chequeo__rev:has(input:disabled){cursor:default}
+/* Minutos estimados del subpaso, a la derecha del rótulo. */
+.chequeo__min{font-size:var(--t-xs);color:var(--tx-3);font-variant-numeric:tabular-nums;flex:none}
 /* Casilla de cobro (cargo por entrega tardía). NO es una tarea cumplida:
    marcarla significa «sí se lo cobro», así que se resalta en vez de tacharse
    —tachar leía justo al revés, como si lo estuviera perdonando. */
@@ -659,7 +676,7 @@ select.campo--min{padding:5px 24px 5px 9px;font-size:var(--t-xs);border-radius:v
           <button class="cifra cifra--riesgo" data-atajo="vencer:estado:vencida"><b id="kVencidas">0</b><span>ya vencidas</span></button>
           <button class="cifra cifra--riesgo" data-atajo="vencer:estado:esta semana"><b id="kSemana">0</b><span>vencen en 7 días</span></button>
           <button class="cifra" data-atajo="vencer:paso:Documentos"><b id="kEnDocs">0</b><span>en fase de documentos</span></button>
-          <button class="cifra cifra--alerta" data-atajo="vencer:docs:faltan"><b id="kDocs">0</b><span>esperan papeles</span></button>
+          <button class="cifra cifra--revision" data-atajo="vencer:revision:listo"><b id="kRevision">0</b><span>listos para revisión</span></button>
           <button class="cifra cifra--ok" data-atajo="vencer:estado:presentada"><b id="kPres">0</b><span>presentadas</span></button>
           <p class="cifras__nota" id="cifrasNota"></p>
         </section>
@@ -867,7 +884,10 @@ const CHECKLIST_PASO = {
     'Guardar papeles faltantes en la carpeta de Drive',
     'Ingresar papeles faltantes al ayuda renta',
     'Anotar comentarios para revisión final',
-    'Hacer correcciones de revisión final'
+    'Hacer correcciones de revisión final',
+    // Último de la fila: al marcarlo el cliente sale en «listos para
+    // revisión» del tablero y su paso cambia de color.
+    'Enviado a revisión'
   ],
   [PASOS.indexOf('Presentado')+1]: [
     'Borrador generado',
@@ -890,6 +910,83 @@ const TAREA_ALIAS = {
   'Enviar correo con papeles faltantes':                          'Solicitar documentos faltantes (si aplica)'
 };
 const tareaHecha = (c,t) => !!(c.tareas?.[t] ?? (TAREA_ALIAS[t] ? c.tareas?.[TAREA_ALIAS[t]] : false));
+
+const TAREA_REVISION = 'Enviado a revisión';
+
+/* ── Dificultad y tiempos ─────────────────────────────────────
+   Cada cliente se clasifica a mano, en el mismo desplegable donde se
+   escoge el responsable. Con eso, cada subpaso sabe cuántos minutos
+   cuesta, y lo que falta por hacer se puede sumar.
+
+   Los cuatro subpasos de Documentos cuestan lo mismo en todo el mundo;
+   de Elaboración en adelante sí depende de la categoría. Los subpasos
+   que no aparecen aquí (enviar a revisión, el borrador, la presentación
+   y su correo) no suman: son actos de un momento, no trabajo medible. */
+const DIFICULTADES = ['Sencilla','Media','Compleja'];
+const MINUTOS_SUBPASO = {
+  'Tomar pantallazos y dejarlos en un doc de Drive':               [35,35,35],
+  'Descargar reporte, facturas y sugerida de la DIAN':             [10,10,10],
+  'Colorear reporte':                                              [ 8, 8, 8],
+  'Organizar papeles en la carpeta de Drive':                      [ 2, 2, 2],
+  'Ingresar papeles al ayuda renta':                               [20,35,45],
+  'Verificar papeles contra reporte y marcar Ok o Falta':          [10,15,18],
+  'Verificar papeles contra pantallazos y anotar en la plataforma':[ 5, 8,10],
+  'Enviar correo con papeles faltantes':                           [ 5, 5, 5],
+  'Guardar papeles faltantes en la carpeta de Drive':              [ 5, 5, 5],
+  'Ingresar papeles faltantes al ayuda renta':                     [ 5, 8,15],
+  'Anotar comentarios para revisión final':                        [ 5, 5, 5],
+  'Hacer correcciones de revisión final':                          [10,15,20]
+};
+
+// Minutos de un subpaso para la categoría de este cliente. Sin categoría
+// no se inventa un número: se devuelve null y el tiempo no se estima.
+function minutosDe(t, dificultad){
+  const i = DIFICULTADES.indexOf(dificultad);
+  if(i < 0) return null;
+  return MINUTOS_SUBPASO[t]?.[i] ?? 0;
+}
+
+/* Lo que falta por trabajarle a un cliente: la suma de los subpasos que
+   nadie ha marcado, de TODOS los pasos y no solo del actual. Un subpaso
+   sin marcar de Documentos sigue siendo trabajo pendiente aunque el
+   expediente ya vaya en Elaboración. */
+function minutosFaltantes(c){
+  if(!c.dificultad) return null;
+  let m = 0;
+  for(const lista of Object.values(CHECKLIST_PASO))
+    for(const t of lista) if(!tareaHecha(c,t)) m += minutosDe(t, c.dificultad) || 0;
+  return m;
+}
+
+// 95 → «1 h 35 min». Sin decimales de hora: se lee peor.
+function enHoras(min){
+  if(min == null) return '—';
+  if(!min) return 'nada pendiente';
+  const h = Math.floor(min/60), r = min%60;
+  return h ? (r ? `${h} h ${r} min` : `${h} h`) : `${r} min`;
+}
+
+/* Un cliente está listo para que lo revisen cuando ya se marcó «Enviado a
+   revisión» y todavía no se ha presentado: después de presentar, revisar
+   ya no tiene para qué. */
+const listoRevision = c => tareaHecha(c, TAREA_REVISION) && c.paso < PASOS.indexOf('Presentado')+1;
+
+/* Quién marcó cada subpaso y cuándo. Va en mapas aparte de `tareas` para
+   no cambiarle la forma a lo que ya está guardado: un expediente viejo
+   simplemente no tiene firma y lo dice. `revisiones` es el chulito del
+   verificador, que es otro acto y por eso otra firma. */
+const firmaTarea  = (c,t) => c.tareasQuien?.[t] || null;
+const revisionDe  = (c,t) => c.revisiones?.[t]  || null;
+const revisado    = (c,t) => !!revisionDe(c,t)?.ok;
+
+// «29 ago, 6:12 p. m.» — corto, porque va dentro de la fila del subpaso.
+function selloCorto(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  if(isNaN(d)) return '';
+  return `${d.getDate()} ${MESES[d.getMonth()]}, ` +
+    d.toLocaleTimeString('es-CO', {hour:'numeric', minute:'2-digit'});
+}
 
 // Guía de colores para «Colorear reporte» (se muestra como tooltip).
 const GUIA_COLORES = [
@@ -1347,7 +1444,11 @@ const TONO_PASO = ['','curso','alerta','curso','ok','ok'];
 const celCliente = c => `<div class="nom">${esc(c.sheet.nombre)}</div><div class="sub">${esc(c.cedula)}${c.sheet.grupo?' · grupo '+esc(c.sheet.grupo):''}</div>`;
 // El paso se sigue viendo aunque no esté obligado: dice hasta dónde se llegó
 // antes de saberlo, y quien lo marcó puede querer devolverlo.
-const celPaso    = c => `<span class="pastilla ${TONO_PASO[c.paso-1]?'pastilla--'+TONO_PASO[c.paso-1]:''}">${esc(PASOS[c.paso-1]||'—')}</span>`
+/* Un cliente enviado a revisión no se ve como el resto de su paso: es el
+   estado que hay que poder cazar de un vistazo en la lista. */
+const celPaso    = c => listoRevision(c)
+  ? `<span class="pastilla pastilla--revision">${esc(PASOS[c.paso-1]||'—')} · en revisión</span>`
+  : `<span class="pastilla ${TONO_PASO[c.paso-1]?'pastilla--'+TONO_PASO[c.paso-1]:''}">${esc(PASOS[c.paso-1]||'—')}</span>`
   + (c.noObligado ? ' <span class="pastilla">no obligado</span>' : '')
   + (c.cancelado  ? ' <span class="pastilla pastilla--riesgo">cancelado</span>' : '');
 const celDocs    = r => (r.noObligado || r.cancelado) ? `<span class="dato">no aplica</span>`
@@ -1505,7 +1606,7 @@ function pintarVencer(rs){
   $('#kSemana').textContent   = t.filter(r=>r.proxima).length;
   $('#kVencidas').textContent = t.filter(r=>r.vencida).length;
   $('#kEnDocs').textContent   = activos.filter(c=>c.paso===PASO_DOCS).length;
-  $('#kDocs').textContent     = t.filter(r=>r.falta>0).length;
+  $('#kRevision').textContent = activos.filter(listoRevision).length;
   $('#kPres').textContent     = t.filter(r=>r.presentado).length;
   const fV = filtros.tVencer || {};
   $$('.cifra').forEach(b=>{
@@ -1565,6 +1666,18 @@ function pintarVencer(rs){
     {clave:'cliente',et:'Cliente',pista:'nombre o cédula',valor:d=>d.c.sheet.nombre+' '+d.c.cedula,ordenValor:d=>d.c.sheet.nombre,pinta:d=>celCliente(d.c)},
     {clave:'paso',   et:'Paso',tipo:'opciones',opciones:PASOS,valor:d=>PASOS[d.c.paso-1],ordenValor:d=>d.c.paso,pinta:d=>celPaso(d.c)},
     {clave:'docs',   et:'Documentos',tipo:'opciones',opciones:['completos','faltan'],valor:d=>d.r.falta?'faltan':'completos',ordenValor:d=>-d.r.falta,pinta:d=>celDocs(d.r)},
+    {clave:'revision',et:'Revisión',tipo:'opciones',opciones:['listo','pendiente'],
+      valor:d=>listoRevision(d.c)?'listo':'pendiente',ordenValor:d=>listoRevision(d.c)?0:1,
+      pinta:d=>listoRevision(d.c)
+        ? '<span class="pastilla pastilla--revision">listo</span>'
+        : '<span class="dato" style="color:var(--tx-3)">—</span>'},
+    {clave:'tiempo', et:'Falta',pista:'min',valor:d=>enHoras(minutosFaltantes(d.c)),
+      // Sin categoría no hay estimación, y va de última en el orden: lo que
+      // no se sabe no puede colarse arriba como si fuera poco trabajo.
+      ordenValor:d=>minutosFaltantes(d.c) ?? Infinity,
+      pinta:d=>{const m=minutosFaltantes(d.c);
+        return m==null ? '<span class="dato" style="color:var(--tx-3)" title="Sin categoría de dificultad">sin estimar</span>'
+                       : `<span class="dato">${esc(enHoras(m))}</span>`;}},
     {clave:'vence',  et:'Vence',pista:'ago',valor:d=>fLarga(d.r.vence),ordenValor:d=>d.r.dias,pinta:d=>celVence(d.r)},
     {clave:'estado', et:'Situación',tipo:'opciones',opciones:['vencida','esta semana','en plazo','presentada'],
       valor:d=>d.r.presentado?'presentada':d.r.vencida?'vencida':d.r.proxima?'esta semana':'en plazo',
@@ -1596,6 +1709,9 @@ function pintarClientes(rs){
     {clave:'grupo',  et:'Grupo',tipo:'opciones',opciones:ds=>[...new Set(ds.map(x=>x.c.sheet.grupo).filter(Boolean))].sort(),valor:d=>d.c.sheet.grupo,pinta:d=>`<span class="dato">${esc(d.c.sheet.grupo||'—')}</span>`},
     {clave:'resp',   et:'Responsable',tipo:'opciones',opciones:RESPONSABLES.concat('sin asignar'),valor:d=>d.c.responsable||'sin asignar',
       pinta:d=>`<span class="dato ${d.c.responsable?'':'dato--riesgo'}">${esc(d.c.responsable||'sin asignar')}</span>`},
+    {clave:'dificultad',et:'Dificultad',tipo:'opciones',opciones:DIFICULTADES.concat('sin clasificar'),
+      valor:d=>d.c.dificultad||'sin clasificar',ordenValor:d=>DIFICULTADES.indexOf(d.c.dificultad),
+      pinta:d=>`<span class="dato ${d.c.dificultad?'':'dato--riesgo'}">${esc(d.c.dificultad||'sin clasificar')}</span>`},
     // «No obligado» entra como una opción más del filtro de paso: es la forma
     // natural de sacar la lista de quienes se cayeron por topes.
     {clave:'paso',   et:'Paso',tipo:'opciones',opciones:PASOS.concat('No obligado','Cancelado'),
@@ -1706,7 +1822,8 @@ function cotzAgregar(){
              cotizado:d.valor||0, estado:'Cotizado', grupo:d.grupo, responsable:'', otras:{} },
     paso: 2,                              // Cotizó
     responsable:'', honorarioManual:null, honorarioFijo:false, noObligado:false, cancelado:false,
-    tareas:{}, cifras:{}, documentos:docsNuevos(), hitos:{}, notas:[], resumen:null, _cargado:false
+    dificultad:'', tareas:{}, tareasQuien:{}, revisiones:{},
+    cifras:{}, documentos:docsNuevos(), hitos:{}, notas:[], resumen:null, _cargado:false
   };
   CLIENTES = [nuevo, ...CLIENTES];
   refrescarSelectClientes();
@@ -2583,10 +2700,19 @@ function notasDe(c, paso){ return c.notas.filter(n=>n.paso===paso); }
 // Leidy…); si no hay perfil, el correo; y como último recurso, «Equipo».
 function autorActual(){ return PERFIL?.nombre || USUARIO?.email || 'Equipo'; }
 
+/* Sello de un chuleo: quién, con qué cuenta y a qué hora. `cuando` lleva
+   la hora completa y no `hoyISO()`, que es solo la fecha: para saber
+   quién hizo qué, «el martes» no alcanza. */
+function selloDeAhora(valor, clave){
+  return {[clave]: valor, por: autorActual(), uid: USUARIO?.uid || '', cuando: new Date().toISOString()};
+}
+
 function pintarCliente(c){
   const r = resumen(c);
   const movs = MOVS.filter(m=>cedulasDe(m).includes(c.cedula));
   const esAdmin = PERFIL?.rol === 'admin';
+  // Quién puede mover el chulito de «revisado». Los demás lo ven apagado.
+  const puedeRevisar = esAdmin || PERFIL?.rol === 'verificador' || !NUBE;
   const hon = honorariosDe(c);
   if(!hitosAbiertos.size) hitosAbiertos.add(c.paso);
 
@@ -2614,11 +2740,17 @@ function pintarCliente(c){
           const fecha = c.hitos[n]?.fecha;
           const chk = CHECKLIST_PASO[n];
           const chkDone = chk ? chk.filter(t=>tareaHecha(c,t)).length : 0;
+          const chkRev  = chk ? chk.filter(t=>revisado(c,t)).length : 0;
+          // Minutos que le faltan a ESTE paso, con la categoría del cliente.
+          const chkMin  = chk && c.dificultad
+            ? chk.reduce((m,t)=> m + (tareaHecha(c,t) ? 0 : (minutosDe(t,c.dificultad)||0)), 0) : null;
           return `<details class="hito hito--${estado}" data-hito="${n}"${hitosAbiertos.has(n)?' open':''}>
             <summary class="hito__cab">
               <span class="hito__n">${n<c.paso?'✓':n}</span>
               <span class="hito__t">${esc(p)}</span>
               ${chk?`<span class="pastilla ${chkDone===chk.length?'pastilla--ok':'pastilla--alerta'}">${chkDone}/${chk.length}</span>`:''}
+              ${chk&&chkRev?`<span class="pastilla pastilla--revision" title="Subpasos que el verificador ya revisó">revisado ${chkRev}/${chk.length}</span>`:''}
+              ${chkMin?`<span class="pastilla" title="Tiempo estimado de lo que falta en este paso">${esc(enHoras(chkMin))}</span>`:''}
               ${ns.length?`<span class="pastilla">${ns.length} nota${ns.length>1?'s':''}</span>`:''}
               ${estado==='actual'?'<span class="pastilla pastilla--curso">actual</span>':''}
               <span class="hito__f">${fecha?fLarga(fecha):''}</span>
@@ -2626,9 +2758,20 @@ function pintarCliente(c){
             <div class="hito__cuerpo">
               ${chk?`<div class="chequeo">${chk.map(t=>{
                 const guia = TAREA_GUIA[t];
+                const fm   = firmaTarea(c,t), rv = revisionDe(c,t);
+                const min  = minutosDe(t, c.dificultad);
+                // El sello del chulito propio: quién y cuándo. Si se
+                // desmarcó, se dice, porque también es algo que pasó.
+                const sello = fm && fm.cuando
+                  ? `${esc(fm.hecho===false?'desmarcó ':'')}${esc(fm.por||'alguien')} · ${esc(selloCorto(fm.cuando))}` : '';
                 return `<div class="chequeo__fila">
-                  <label class="chequeo__i"><input type="checkbox" data-tarea="${esc(t)}"${tareaHecha(c,t)?' checked':''}><span>${esc(t)}</span></label>
+                  <label class="chequeo__i"><input type="checkbox" data-tarea="${esc(t)}"${tareaHecha(c,t)?' checked':''}><span>${esc(t)}</span>${sello?`<span class="chequeo__firma">${sello}</span>`:''}</label>
+                  ${min?`<span class="chequeo__min" title="Tiempo estimado para un cliente de categoría ${esc(c.dificultad)}">${min} min</span>`:''}
                   ${guia?`<span class="pista-info" tabindex="0" role="img" aria-label="Guía de colores para colorear el reporte">i<span class="pista-info__pop">${guia.map(g=>`<span class="pista-info__l"><i style="background:${g.color}"></i>${esc(g.et)}</span>`).join('')}</span></span>`:''}
+                  <label class="chequeo__rev ${revisado(c,t)?'chequeo__rev--si':''}" title="${rv&&rv.cuando?esc(`Revisado por ${rv.por||'alguien'} · ${selloCorto(rv.cuando)}`):(puedeRevisar?'Marca que ya revisaste este subpaso':'Solo el verificador marca esta casilla')}">
+                    <input type="checkbox" data-revisar="${esc(t)}"${revisado(c,t)?' checked':''}${puedeRevisar?'':' disabled'}>
+                    <span>revisado</span>
+                  </label>
                 </div>`;
               }).join('')}</div>`:''}
               ${estado!=='actual'?`<div class="hito__acc"><button class="btn btn--chico" data-paso="${n}">Marcar como paso actual</button></div>`:''}
@@ -2721,6 +2864,15 @@ function pintarCliente(c){
               <option value="">Sin asignar</option>
               ${RESPONSABLES.map(p=>`<option value="${esc(p)}"${c.responsable===p?' selected':''}>${esc(p)}</option>`).join('')}
             </select></dd></div>
+          <div class="par">
+            <dt>Dificultad<br><span class="sub" style="display:block;max-width:22ch">De ella dependen los minutos de cada subpaso</span></dt>
+            <dd><select class="campo campo--min" data-dificultad aria-label="Categoría de dificultad del cliente">
+              <option value="">Sin clasificar</option>
+              ${DIFICULTADES.map(p=>`<option value="${esc(p)}"${c.dificultad===p?' selected':''}>${esc(p)}</option>`).join('')}
+            </select></dd></div>
+          <div class="par"><dt>Tiempo pendiente</dt><dd>${c.dificultad
+            ? esc(enHoras(minutosFaltantes(c)))
+            : '<span style="color:var(--tx-3)">clasifícalo para estimarlo</span>'}</dd></div>
         </dl>
       </div>
 
@@ -3173,6 +3325,13 @@ function cablearCliente(c){
   const selResp = $('[data-responsable]',raiz);
   if(selResp) selResp.onchange = ()=>{ c.responsable = selResp.value; guardar(); brindis(c.responsable?`Responsable: ${c.responsable}.`:'Sin responsable asignado.'); };
 
+  const selDif = $('[data-dificultad]',raiz);
+  // Repinta: los minutos de cada subpaso y el pendiente cambian con esto.
+  if(selDif) selDif.onchange = ()=>{
+    c.dificultad = selDif.value; guardar(); pintarCliente(c);
+    brindis(c.dificultad?`Categoría: ${c.dificultad}.`:'Sin clasificar.');
+  };
+
   const inpHon = $('[data-honorario]',raiz);
   if(inpHon) inpHon.onchange = ()=>{
     const t = inpHon.value.trim();
@@ -3212,6 +3371,19 @@ function cablearCliente(c){
     // llaves omitidas de un mapa: reaparecerían). Se guarda `false`, que sí
     // sobrescribe el `true` anterior.
     c.tareas[chk.dataset.tarea] = !!chk.checked;
+    // Y queda constancia de quién lo movió y cuándo, incluso al desmarcar:
+    // la pregunta que se hace después no es solo si está hecho.
+    c.tareasQuien = c.tareasQuien || {};
+    c.tareasQuien[chk.dataset.tarea] = selloDeAhora(!!chk.checked, 'hecho');
+    guardar(); pintarCliente(c);
+  });
+
+  /* El chulito del verificador. Vive en `revisiones`, aparte de `tareas`:
+     son dos actos distintos y la pregunta «¿quién revisó esto?» no se
+     responde con «¿quién lo hizo?». */
+  $$('[data-revisar]',raiz).forEach(chk=> chk.onchange = ()=>{
+    c.revisiones = c.revisiones || {};
+    c.revisiones[chk.dataset.revisar] = selloDeAhora(!!chk.checked, 'ok');
     guardar(); pintarCliente(c);
   });
 
@@ -3449,7 +3621,10 @@ function importar(texto){
       noObligado:      antes?.noObligado ?? false,
       // Que el Sheet lo siga trayendo no lo resucita: canceló aquí.
       cancelado:       antes?.cancelado ?? false,
+      dificultad: antes?.dificultad || '',
       tareas:     antes?.tareas     || {},
+      tareasQuien:antes?.tareasQuien|| {},
+      revisiones: antes?.revisiones || {},
       // Las cifras del correo de presentación las teclea el equipo: son
       // territorio de la plataforma y reimportar el Sheet no las toca.
       cifras:     antes?.cifras     || {},
@@ -4039,7 +4214,9 @@ const platSig = x => firma({
   honorarioManual: x.honorarioManual??null, honorarioFijo: x.honorarioFijo??false,
   noObligado: x.noObligado??false, cancelado: x.cancelado??false,
   recargoDocs: x.recargoDocs||0, recargoDocsFecha: x.recargoDocsFecha||'',
-  tareas: x.tareas||{}, cifras: x.cifras||{}
+  dificultad: x.dificultad||'',
+  tareas: x.tareas||{}, tareasQuien: x.tareasQuien||{}, revisiones: x.revisiones||{},
+  cifras: x.cifras||{}
 });
 const espejoDe = ced => ESPEJO.clientes[ced] || (ESPEJO.clientes[ced] = vacioEspejo());
 
@@ -4102,7 +4279,10 @@ function escucharClientes(){
         cancelado:       dat.cancelado ?? false,
         recargoDocs:     dat.recargoDocs || 0,
         recargoDocsFecha:dat.recargoDocsFecha || '',
+        dificultad: dat.dificultad || '',
         tareas:  dat.tareas || {},
+        tareasQuien: dat.tareasQuien || {},
+        revisiones:  dat.revisiones || {},
         cifras:  dat.cifras || {},
         resumen: dat.resumen || null
       };
@@ -4133,7 +4313,10 @@ function escucharClientes(){
         cancelado:       base.cancelado ?? false,
         recargoDocs:     base.recargoDocs || 0,
         recargoDocsFecha:base.recargoDocsFecha || '',
+        dificultad: base.dificultad || '',
         tareas:  base.tareas || {},
+        tareasQuien: base.tareasQuien || {},
+        revisiones:  base.revisiones || {},
         cifras:  base.cifras || {},
         resumen: edicionLocalPendiente ? ant.resumen : srv.resumen,
         // El expediente (subcolecciones) se conserva si ya lo habíamos traído.
@@ -4411,7 +4594,7 @@ async function escribirDiferencia(){
     }
 
     c.resumen = resumenDe(c);
-    const cuerpo = {sheet:c.sheet, paso:c.paso, responsable:c.responsable||'', honorarioManual:c.honorarioManual??null, honorarioFijo:c.honorarioFijo??false, noObligado:c.noObligado??false, cancelado:c.cancelado??false, recargoDocs:c.recargoDocs||0, recargoDocsFecha:c.recargoDocsFecha||'', tareas:c.tareas||{}, cifras:c.cifras||{}, resumen:c.resumen};
+    const cuerpo = {sheet:c.sheet, paso:c.paso, responsable:c.responsable||'', honorarioManual:c.honorarioManual??null, honorarioFijo:c.honorarioFijo??false, noObligado:c.noObligado??false, cancelado:c.cancelado??false, recargoDocs:c.recargoDocs||0, recargoDocsFecha:c.recargoDocsFecha||'', dificultad:c.dificultad||'', tareas:c.tareas||{}, tareasQuien:c.tareasQuien||{}, revisiones:c.revisiones||{}, cifras:c.cifras||{}, resumen:c.resumen};
     const j = firma(cuerpo);
     if(e.doc !== j){ const ps = platSig(c); lote.set(ref, {...cuerpo, ...sello}, {merge:true}); alConfirmar.push(()=>{ e.doc=j; e.plat=ps; }); n++; }
   }
