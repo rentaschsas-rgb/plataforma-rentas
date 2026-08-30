@@ -884,10 +884,11 @@ const CHECKLIST_PASO = {
     'Guardar papeles faltantes en la carpeta de Drive',
     'Ingresar papeles faltantes al ayuda renta',
     'Anotar comentarios para revisión final',
-    'Hacer correcciones de revisión final',
-    // Último de la fila: al marcarlo el cliente sale en «listos para
-    // revisión» del tablero y su paso cambia de color.
-    'Enviado a revisión'
+    // Va aquí y no al final: se anota lo que hay que mirar, se manda a
+    // revisar —el cliente sale en «listos para revisión» del tablero y su
+    // paso cambia de color— y solo después se corrige lo que devolvieron.
+    'Enviado a revisión',
+    'Hacer correcciones de revisión final'
   ],
   [PASOS.indexOf('Presentado')+1]: [
     'Borrador generado',
