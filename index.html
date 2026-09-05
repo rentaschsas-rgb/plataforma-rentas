@@ -869,6 +869,11 @@ const PASOS = ['Invitado','Cotizó','Documentos','Elaboración','Presentado','Pa
 const CHECKLIST_PASO = {
   // Lo que se hace apenas llegan los papeles por primera vez.
   [PASOS.indexOf('Documentos')+1]: [
+    // Va de primeras y no más abajo: si resulta que no está obligado, todo
+    // lo demás sobra. Es el paso que se estaba saltando. Cuando la respuesta
+    // sea que no, se marca además el interruptor «No obligado» del bloque
+    // Situación, que es el que lo saca de vencimientos y de papeles.
+    'Verificar si está obligado a declarar',
     'Tomar pantallazos y dejarlos en un doc de Drive',
     'Descargar reporte, facturas y sugerida de la DIAN',
     'Colorear reporte',
@@ -925,6 +930,7 @@ const TAREA_REVISION = 'Enviado a revisión';
    y su correo) no suman: son actos de un momento, no trabajo medible. */
 const DIFICULTADES = ['Sencilla','Media','Compleja'];
 const MINUTOS_SUBPASO = {
+  'Verificar si está obligado a declarar':                         [ 5, 5, 5],
   'Tomar pantallazos y dejarlos en un doc de Drive':               [35,35,35],
   'Descargar reporte, facturas y sugerida de la DIAN':             [10,10,10],
   'Colorear reporte':                                              [ 8, 8, 8],
@@ -1003,7 +1009,17 @@ const TAREA_GUIA = { 'Colorear reporte': GUIA_COLORES };
    sale la lista de papeles de cada quien, en vez de darle las mismas seis
    a todos. El mapeo lo confirmó el equipo; se ajusta aquí sin desplegar
    nada más. */
-const DOCS_UNIVERSALES = ['Cédula','RUT','Clave de la DIAN actualizada'];
+const DOCS_UNIVERSALES = ['Clave de la DIAN actualizada'];
+
+/* Categorías RETIRADAS: se pedían a todo el mundo y ya no, porque de todos
+   los clientes tenemos cédula y RUT desde hace años. No se borra nada de
+   Firestore —los expedientes viejos las conservan guardadas—: simplemente
+   dejan de existir para la consola, así que no se pintan, no cuentan como
+   faltantes, no entran en los correos y no se pueden volver a agregar. Si
+   algún día vuelven a hacer falta, se saca la categoría de esta lista y lo
+   que ya estaba marcado reaparece tal cual. */
+const CATS_RETIRADAS = ['Cédula','RUT'];
+const docsVivos = c => c.documentos.filter(d=>!CATS_RETIRADAS.includes(d.categoria));
 const REGLAS_DOC = [
   {col:'Salario',                        doc:'Certificado de ingresos y retenciones (laboral)'},
   {col:'Pensión',                        doc:'Certificado de pensión'},
@@ -1061,7 +1077,7 @@ function catsSegunRespuestas(get){
 }
 
 // Categorías presentes en el expediente de un cliente, en orden canónico.
-const catsDe = c => [...new Set(c.documentos.map(d=>d.categoria))]
+const catsDe = c => [...new Set(docsVivos(c).map(d=>d.categoria))]
   .sort((a,b)=>{ const ia=ORDEN_CAT.indexOf(a), ib=ORDEN_CAT.indexOf(b);
                  return (ia<0?999:ia)-(ib<0?999:ib); });
 const PERSONAS = ['Johanna','Leidy','John'];
@@ -1247,9 +1263,50 @@ const cobroDe = c => honorariosDe(c) + recargoDe(c);
    los clientes de «Presentado» en adelante aparecen debiendo, y solo ellos
    suman en «Por cobrar» y en el contador de la pestaña Pagos. Los demás
    quedan como «por presentar»: se ven, con su saldo, pero sin rojo. */
-const PASO_COBRO = PASOS.indexOf('Presentado') + 1;
+const PASO_COBRO  = PASOS.indexOf('Presentado') + 1;
+const PASO_PAGADO = PASOS.indexOf('Pagado') + 1;
 const cobrable = c => !c.cancelado && c.paso >= PASO_COBRO;
 const debeDe = (c, r) => cobrable(c) && cobroDe(c) > 0 && r.saldo > 0;
+
+/* Mover a un paso, con sus hitos: los anteriores quedan cumplidos con la
+   fecha de hoy y los posteriores se sueltan. Lo usan el botón del
+   expediente y el paso automático al quedar pago. */
+function fijarPaso(c, n){
+  c.paso = n;
+  for(let k=1;k<n;k++) if(!c.hitos[k]) c.hitos[k] = {fecha:hoyISO()};
+  for(let k=n;k<=PASOS.length;k++) delete c.hitos[k];
+}
+
+/* PASO AUTOMÁTICO AL QUEDAR PAGO. Registrar el pago y además acordarse de
+   mover el paso era un trámite doble que se olvidaba, y el cliente se
+   quedaba en «Presentado» ya estando al día. Ahora, cuando un movimiento
+   deja el saldo en cero, el cliente pasa solo a «Pagado».
+
+   Solo desde PRESENTADO, nunca desde antes: quien abona por adelantado en
+   Documentos no puede saltarse Elaboración ni la presentación misma. Si
+   todavía no ha presentado, el pago se registra y el paso se queda donde
+   está —el saldo en cero ya se ve en el bloque Cobro—.
+
+   Se compara contra `cobroDe`, que es honorarios + cargo por entrega
+   tardía: eso es lo que de verdad se debe. Devuelve a quién movió, para
+   poder decirlo en el recibo. */
+function pasarAPagadoSiQuedoAlDia(mov){
+  const movidos = [];
+  for(const {cedula} of repartoDe(mov)){
+    const c = CLIENTES.find(x=>x.cedula===cedula);
+    if(!c || c.cancelado || c.paso !== PASO_COBRO) continue;
+    const total = cobroDe(c);
+    if(!(total > 0) || pagadoDe(c.cedula) < total) continue;
+    fijarPaso(c, PASO_PAGADO);
+    // La constancia solo cabe si el expediente está traído: las notas de un
+    // cliente sin cargar no se sincronizan (ver escribirDiferencia).
+    if(c._cargado) c.notas.unshift({id:idNuevo('n'),
+      texto:`Pasa a Pagado automáticamente: con este movimiento quedó al día (${pesos(total)}).`,
+      paso:PASO_PAGADO, origen:'equipo', autor:autorActual(), creado:hoyISO()});
+    movidos.push(c);
+  }
+  return movidos;
+}
 // Fecha límite de entrega: una semana antes del vencimiento.
 function limiteEntregaDe(c){
   const f = aDate(venceDe(c)); if(!f) return '';
@@ -1262,8 +1319,8 @@ function limiteEntregaDe(c){
 function conteoDocs(c){
   if(c._cargado || !NUBE) return {
     falta: catsFaltantes(c).length,
-    docsTotal: c.documentos.length,
-    docsRecibidos: c.documentos.filter(x=>x.recibido).length
+    docsTotal: docsVivos(c).length,
+    docsRecibidos: docsVivos(c).filter(x=>x.recibido).length
   };
   const r = c.resumen || {};
   return {
@@ -1717,7 +1774,7 @@ function pintarClientes(rs){
     // natural de sacar la lista de quienes se cayeron por topes.
     {clave:'paso',   et:'Paso',tipo:'opciones',opciones:PASOS.concat('No obligado','Cancelado'),
       valor:d=>d.c.cancelado?'Cancelado':d.c.noObligado?'No obligado':PASOS[d.c.paso-1],ordenValor:d=>d.c.paso,pinta:d=>celPaso(d.c)},
-    {clave:'tiene',  et:'Tiene',pista:'documento',valor:d=>d.c.documentos.filter(x=>x.recibido).map(x=>x.nombre||x.categoria).join(', '),
+    {clave:'tiene',  et:'Tiene',pista:'documento',valor:d=>docsVivos(d.c).filter(x=>x.recibido).map(x=>x.nombre||x.categoria).join(', '),
       ordenValor:d=>d.r.docsRecibidos,
       pinta:d=>`<span class="dato ${d.r.falta?'':'dato--ok'}">${d.r.docsRecibidos}/${d.r.docsTotal}</span>`},
     {clave:'falta',  et:'Le falta',pista:'documento',valor:d=>(d.c.noObligado||d.c.cancelado)?'no aplica':(catsFaltantes(d.c).join(', ')||'nada'),ordenValor:d=>-d.r.falta,
@@ -2139,6 +2196,49 @@ function correoUltimoDia(c){
   };
 }
 
+/* ══════════════════════════════════════════════════════════════
+   RECORDATORIO ANTICIPADO — «vaya reuniendo los papeles»
+
+   El tercero de los correos de documentos, y el más suave. Es para quien
+   todavía está LEJOS: le falta más de una semana para la fecha de entrega
+   (o sea, más de DIAS_ENTREGA días para el vencimiento).
+
+   Lo que NO dice, y por eso existe:
+   · No dice «es el último día», que a tres semanas del plazo es falso y
+     el cliente lo comprueba solo mirando la fecha.
+   · No habla del cargo de los $70.000 ni lo aplica: a esta distancia
+     sería amenazar con algo que todavía no puede pasar.
+
+   Solo pide los papeles y recuerda para cuándo se necesitan. Sale por el
+   mismo camino que los otros dos (`recordatorioAnticipado` en
+   recordatorios.gs) y deja la misma constancia en el expediente.
+   ══════════════════════════════════════════════════════════════ */
+function correoAnticipado(c){
+  const nombre = String(c.sheet.nombre||'').replace(/\s+/g,' ').trim() || 'cliente';
+  const vence  = venceDe(c), limite = limiteEntregaDe(c);
+  const faltan = faltantesDe(c);
+
+  const L = [];
+  L.push(`Estimado(a) ${nombre},`);
+  L.push('');
+  L.push(`Estamos preparando su declaración de renta del año gravable ${PERIODO}, que vence el ${fLarga(vence)}.`);
+  L.push('');
+  L.push('Para empezar a elaborarla nos hacen falta estos documentos:');
+  L.push('');
+  faltan.forEach(f => L.push(`  • ${f}`));
+  if(!faltan.length) L.push('  (No hay documentos marcados como pendientes en el expediente.)');
+  L.push('');
+  L.push(`Puede enviárnoslos respondiendo a este mismo correo. Los necesitamos a más tardar el ${fLarga(limite)}, para revisarlos con calma y presentar a tiempo.`);
+  L.push('');
+  L.push('Saludos cordiales,');
+  L.push('Cano Herrera Asesorías SAS · rentas.chsas@gmail.com');
+
+  return {
+    asunto: `Documentos para su Declaración de Renta ${PERIODO} — vence el ${fLarga(vence)}`,
+    texto: L.join('\n')
+  };
+}
+
 /* Pide al Apps Script que envíe el correo. Devuelve lo que contestó el
    servidor, o `null` si el navegador no pudo leer la respuesta —que pasa,
    porque Apps Script contesta tras un redirect a otro dominio. Que no se
@@ -2159,6 +2259,7 @@ async function pedirEnvio(accion, c){
 // cambia es cuál de los dos arma el servidor —y que el de último día no cobra.
 const pedirEnvioRecordatorio = c => pedirEnvio('recordatorio', c);
 const pedirEnvioUltimoDia    = c => pedirEnvio('ultimodia', c);
+const pedirEnvioAnticipado   = c => pedirEnvio('anticipado', c);
 
 /* La barra que aparece arriba de las categorías cuando falta algo. */
 function bloquePedir(c){
@@ -2199,6 +2300,17 @@ function bloquePedir(c){
       ? 'Sin correo en el Sheet: se puede copiar, pero no hay a dónde escribirle.'
       : 'Sale al instante desde rentas.chsas, sin vista previa. No cobra nada: es el aviso para evitar el cargo.';
 
+  /* El anticipado es para el que todavía está lejos: más de una semana
+     antes de la fecha de entrega, o sea a más de 7 días del vencimiento.
+     Pasada esa raya deja de ofrecerse, porque ahí las herramientas
+     correctas son las otras dos. */
+  const antVigente = dl > 0;
+  const antNota = !antVigente
+    ? `La fecha de entrega (${fLarga(limiteEntregaDe(c))}) es hoy o ya pasó: a esta altura el aviso que corresponde es uno de los de arriba.`
+    : !correos.length
+      ? 'Sin correo en el Sheet: se puede copiar, pero no hay a dónde escribirle.'
+      : `Le queda${dl===1?'':'n'} ${dl} día${dl===1?'':'s'} de plazo. Solo le pide los papeles: no habla del cargo ni del último día, y no cobra nada.`;
+
   return `<div class="pedir pedir--alerta">
     <button class="btn btn--fuerte btn--chico" data-pedirdocs${correos.length?'':' disabled'}>✉ Enviar recordatorio (${faltan.length} pendientes)</button>
     <button class="btn btn--chico" data-copiarpedido>⧉ Copiar el texto</button>
@@ -2208,6 +2320,11 @@ function bloquePedir(c){
     <button class="btn ${dl===0?'btn--fuerte ':''}btn--chico" data-ultimodia${(udVigente&&correos.length)?'':' disabled'}>⏰ Enviar correo de último día${dl===0?' (es HOY)':''}</button>
     <button class="btn btn--chico" data-copiarudtxt${udVigente?'':' disabled'}>⧉ Copiar el texto</button>
     <span class="pedir__x">${esc(udNota)}</span>
+  </div>
+  <div class="pedir">
+    <button class="btn btn--chico" data-anticipado${(antVigente&&correos.length)?'':' disabled'}>📩 Recordatorio anticipado (${faltan.length} pendientes)</button>
+    <button class="btn btn--chico" data-copiarantxt${antVigente?'':' disabled'}>⧉ Copiar el texto</button>
+    <span class="pedir__x">${esc(antNota)}</span>
   </div>`;
 }
 
@@ -2988,9 +3105,7 @@ function cablearCliente(c){
   $$('[data-paso]',raiz).forEach(b=> b.onclick = ()=>{
     const antes = c.paso, antesHitos = {...c.hitos};
     const n = Number(b.dataset.paso);
-    c.paso = n;
-    for(let k=1;k<n;k++) if(!c.hitos[k]) c.hitos[k] = {fecha:hoyISO()};
-    for(let k=n;k<=PASOS.length;k++) delete c.hitos[k];
+    fijarPaso(c, n);
     hitosAbiertos.add(n);
     guardar(); pintarCliente(c);
     brindis(`${c.sheet.nombre}: ${PASOS[n-1]}.`, ()=>{ c.paso=antes; c.hitos=antesHitos; });
@@ -3286,6 +3401,52 @@ function cablearCliente(c){
   if(btnCopUDTxt) btnCopUDTxt.onclick = async ()=>{
     const v = udSirve(); if(!v) return;
     try{ await navigator.clipboard.writeText(correoUltimoDia(v).texto);
+      brindis('Texto copiado. Si lo envías por WhatsApp, anótalo tú en el expediente.');
+    }catch(_){ brindis('No pude copiar solo.'); }
+  };
+
+  /* ── Recordatorio anticipado ───────────────────────────────
+     El aviso suave, para quien todavía está a más de una semana de la
+     fecha de entrega. No cobra nada y no nombra el cargo, así que
+     registrarSolicitud va con `cobrar = false`, igual que el de último
+     día. Y como los otros, se comprueba que siga teniendo sentido justo
+     antes de mandarlo: la pantalla pudo quedarse abierta días. */
+  const antSirve = ()=>{
+    const v = vivo();
+    if(!faltantesDe(v).length){ brindis('No falta ningún documento.'); return null; }
+    if(diasEntrega(v) <= 0){ brindis('Ya se llegó a la fecha de entrega: usa «Enviar recordatorio» o el correo de último día.'); return null; }
+    return v;
+  };
+  const btnAnt = $('[data-anticipado]',raiz);
+  if(btnAnt) btnAnt.onclick = async ()=>{
+    const v = antSirve(); if(!v) return;
+    const correos = correosDe(v);
+    if(!correos.length){ brindis('Ese cliente no tiene correo registrado en el Sheet.'); return; }
+    const faltan = faltantesDe(v);
+
+    const rotulo = btnAnt.textContent;
+    btnAnt.disabled = true; btnAnt.textContent = 'Enviando…';
+    try{
+      const r = await pedirEnvioAnticipado(v);
+      if(r && r.ok === false){
+        alarma('No se envió el recordatorio anticipado: ' + (r.error || 'el servidor lo rechazó.'));
+        btnAnt.disabled = false; btnAnt.textContent = rotulo;
+        return;
+      }
+      registrarSolicitud(faltan, 'correo anticipado', false);
+      const aQuien = (r && r.enviadoA) ? r.enviadoA.join(', ') : correos.join(', ');
+      brindis(`Recordatorio anticipado enviado a ${aQuien}. No se aplicó ningún cargo.`
+        + (r ? '' : ' Verifícalo en «Enviados» de rentas.chsas.'));
+    }catch(err){
+      alarma('No pude comunicarme con el servidor de correo: ' + (err?.message || err) +
+             '. Revisa la conexión, o usa «Copiar el texto» y mándalo a mano.');
+      btnAnt.disabled = false; btnAnt.textContent = rotulo;
+    }
+  };
+  const btnCopAnTxt = $('[data-copiarantxt]',raiz);
+  if(btnCopAnTxt) btnCopAnTxt.onclick = async ()=>{
+    const v = antSirve(); if(!v) return;
+    try{ await navigator.clipboard.writeText(correoAnticipado(v).texto);
       brindis('Texto copiado. Si lo envías por WhatsApp, anótalo tú en el expediente.');
     }catch(_){ brindis('No pude copiar solo.'); }
   };
@@ -4095,7 +4256,7 @@ $('#btnOtroMov').onclick   = ()=>{
 };
 $('#modalMov').onclick = e=>{ if(e.target===$('#modalMov')) cerrarMov(); };
 
-function pintarRecibo(mov, editado){
+function pintarRecibo(mov, editado, movidos){
   const rp = repartoDe(mov);
   const saldoDe = ced => {
     const c = CLIENTES.find(x=>x.cedula===ced);
@@ -4117,7 +4278,10 @@ function pintarRecibo(mov, editado){
           rp.length>1?` · ${pesos(r.monto||0)}`:''}</dt><dd>${saldoDe(r.cedula)}</dd></div>`).join('')}
     </dl>
     ${rp.length ? `<p class="sinnota" style="margin-top:10px">${rp.length>1
-        ? 'A la derecha, el saldo que le queda a cada uno.' : 'A la derecha, el saldo que le queda.'}</p>` : ''}`;
+        ? 'A la derecha, el saldo que le queda a cada uno.' : 'A la derecha, el saldo que le queda.'}</p>` : ''}
+    ${(movidos||[]).length ? `<p class="sinnota" style="margin-top:6px">${
+        esc((movidos||[]).map(c=>c.sheet.nombre||c.cedula).join(', '))} ${
+        movidos.length>1?'pasaron':'pasó'} al paso <b>Pagado</b>: quedó al día.</p>` : ''}`;
   $('#recibo').hidden = false;
 }
 
@@ -4173,10 +4337,21 @@ $('#formMov').onsubmit = async e=>{
     return;
   }
 
+  /* Con el movimiento ya guardado: si dejó a alguien al día, pasa solo a
+     Pagado. Va DESPUÉS del guardar y con su propio guardar, para que un
+     fallo de red no deje el paso movido sin que el pago exista. Si ese
+     segundo guardado falla, el recibo no lo anuncia: el pago sí quedó, y
+     anunciar un paso que no se guardó sería mentir en pantalla. */
+  let movidos = pasarAPagadoSiQuedoAlDia(mov);
+  if(movidos.length){
+    const rp = await guardar();
+    if(rp && rp.ok === false) movidos = [];
+  }
+
   movEditando = null;
   pintar();
   $('#formMov').hidden = true;
-  pintarRecibo(mov, !!editando);
+  pintarRecibo(mov, !!editando, movidos);
   $('#btnGuardarMov').hidden = true;
   $('#btnOtroMov').hidden = false;
   $('#btnListoMov').hidden = false;
@@ -4251,8 +4426,8 @@ function resumenDe(c){
   const pag = pagadoDe(c.cedula);
   const b = c.resumen || {};
   return {
-    docsTotal:     c._cargado ? c.documentos.length                       : (b.docsTotal||0),
-    docsRecibidos: c._cargado ? c.documentos.filter(d=>d.recibido).length : (b.docsRecibidos||0),
+    docsTotal:     c._cargado ? docsVivos(c).length                       : (b.docsTotal||0),
+    docsRecibidos: c._cargado ? docsVivos(c).filter(d=>d.recibido).length : (b.docsRecibidos||0),
     docsCompletos: c._cargado ? catsFaltantes(c).length===0               : !!b.docsCompletos,
     abonado: pag,
     saldo:   Math.max(0,cobroDe(c)-pag)
@@ -4834,7 +5009,7 @@ $('#btnDemo').onclick = ()=>{
 
 // Sello de versión: sirve para confirmar, a simple vista y en consola, qué
 // build está cargado (y descartar que sea una copia vieja en caché).
-const BUILD = 'v17 · 2026-08-25 · Las cifras del tablero vuelven a filtrar la tabla';
+const BUILD = 'v18 · 2026-09-04 · Recordatorio anticipado, paso automático al pagar, sin Cédula ni RUT';
 try{ const lb = document.getElementById('logoBuild'); if(lb) lb.textContent = BUILD; }catch(_){}
 console.log('%cRentas build '+BUILD, 'color:#5b8;font-weight:bold');
 

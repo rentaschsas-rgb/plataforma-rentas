@@ -146,12 +146,14 @@ Un documento por **papel concreto**, no por categoría. Así "Certificados banca
 
 Una categoría está completa cuando **todos** sus ítems tienen `recibido: true`, y se considera pendiente si no tiene ningún ítem todavía.
 
-**Las categorías las decide cada cliente, no son fijas.** Antes se le daban las mismas seis a todos; ahora la lista sale de lo que respondió en el cotizador. Todo cliente arranca con los tres universales —**Cédula, RUT y Clave de la DIAN actualizada**— y a eso se le suman las categorías que activan sus respuestas (mapeo en `REGLAS_DOC`/`REGLA_ACTIVOS` dentro de `index.html`, confirmado por el equipo): p. ej. `Salario = Sí` → «Certificado de ingresos y retenciones (laboral)», `Cantidad Activos ≠ vacío` → «Relación de bienes». El expediente pinta solo las categorías que tiene, y un selector permite agregar a mano cualquiera que falte.
+**Las categorías las decide cada cliente, no son fijas.** Antes se le daban las mismas seis a todos; ahora la lista sale de lo que respondió en el cotizador. Todo cliente arranca con el único universal que queda —**Clave de la DIAN actualizada**— y a eso se le suman las categorías que activan sus respuestas (mapeo en `REGLAS_DOC`/`REGLA_ACTIVOS` dentro de `index.html`, confirmado por el equipo): p. ej. `Salario = Sí` → «Certificado de ingresos y retenciones (laboral)», `Cantidad Activos ≠ vacío` → «Relación de bienes». El expediente pinta solo las categorías que tiene, y un selector permite agregar a mano cualquiera que falte.
+
+**Categorías retiradas: Cédula y RUT.** Se le pedían a todo el mundo y de todo el mundo ya los tenemos, así que salieron del catálogo (`CATS_RETIRADAS` en `index.html`, y fuera también de `CATEGORIAS_DOC` en `recordatorios.gs`, que es el que valida lo que la consola puede pedir). **No se borró nada de Firestore**: los expedientes viejos las conservan guardadas y simplemente dejan de existir para la consola —no se pintan, no cuentan como faltantes, no entran en los correos y no se pueden volver a agregar—. Sacar una categoría de esa lista la devuelve entera, con lo que ya estuviera marcado. Los genéricos vacíos se sueltan solos la próxima vez que se pase por «Actualizar desde RESPUESTAS» (`fusionarDocs`).
 
 **Categorías con subdocumentos fijos.** Algunas categorías nacen con ítems concretos en vez de un genérico suelto (mapa `SUBDOCS` en `index.html`). Hoy la única es **Clave de la DIAN actualizada**, que trae tres: *Descarga del reporte*, *Descarga de renta sugerida* y *Descarga de facturas electrónicas*.
 
 **Listas de chequeo por paso.** Un paso puede tener tareas internas que cumplir (`CHECKLIST_PASO`), guardadas por cliente en `tareas`. Hoy:
-- **Documentos:** colorear reporte, tomar pantallazos, verificar documentos contra reporte, verificar contra pantallazos, solicitar faltantes. La tarea *Colorear reporte* muestra un tooltip con la guía de colores (`GUIA_COLORES`): verde = saldos de bancos, amarillo = ingresos, morado = patrimonio, azul = retenciones.
+- **Documentos:** **verificar si está obligado a declarar** (va de primeras: si resulta que no lo está, todo lo demás sobra — y es el paso que se estaba saltando; cuando la respuesta sea que no, se marca además el interruptor *No obligado* del bloque *Situación*), colorear reporte, tomar pantallazos, verificar documentos contra reporte, verificar contra pantallazos, solicitar faltantes. La tarea *Colorear reporte* muestra un tooltip con la guía de colores (`GUIA_COLORES`): verde = saldos de bancos, amarillo = ingresos, morado = patrimonio, azul = retenciones.
 - **Elaboración:** ingresar papeles al ayuda renta, verificar valores contra reporte.
 - **Presentado:** borrador generado, presentada ante la DIAN, correo de presentación enviado al cliente. Los tres momentos que se confundían en uno: tener el borrador armado no es haberla radicado, y radicarla no es habérselo contado al cliente. El tercero **se marca solo** al abrir Gmail desde el bloque *Correo de presentación* (`TAREA_CORREO_PRES`), igual que *Solicitar documentos faltantes*.
 
@@ -174,6 +176,8 @@ Nota: la columna **RESPONSABLE** de `elaborar` es un `TRUE`/`FALSE` (marca de co
 - **«Copiar el texto»** deja la misma carta en texto plano, para WhatsApp.
 
 **Correo de último día: también se envía solo.** Segundo botón del mismo bloque (**«Enviar correo de último día»**). Sale por el mismo camino —`ultimoDiaDocumentos` en `recordatorios.gs`, misma cuenta, mismo tope diario, sin vista previa ni pasar por Gmail—, con dos diferencias que importan: **no aplica el cargo** (es justamente el aviso para evitarlo) y **solo sale si el plazo de entrega sigue vivo**. Esa segunda regla la comprueba el servidor contra el Sheet, no solo la pantalla: pasada la fecha, el correo diría «todavía está a tiempo» a quien ya no lo está, y el servidor lo rechaza aunque la consola lo pida. Deja la misma constancia en el expediente (`tipo:'solicitud'`), y la nota dice que no se cobró nada.
+
+**Recordatorio anticipado: el tercero, y el más suave.** Tercer botón del bloque (**«Recordatorio anticipado»**, `recordatorioAnticipado` en `recordatorios.gs`, acción `anticipado`). Es para quien todavía está **a más de 7 días del vencimiento** —o sea, a más de una semana de la fecha de entrega—, y existe por lo que **no** dice: no dice «es el último día», que a tres semanas del plazo el cliente desmiente solo mirando el calendario, y **no nombra el cargo** de los $70.000 ni lo aplica, porque a esa distancia sería amenazar con algo que todavía no puede pasar. Solo pide los papeles y recuerda para cuándo se necesitan. El límite lo comprueba el servidor contra el Sheet, igual que en el de último día: más cerca que eso, el aviso que corresponde es uno de los otros dos. Misma cuenta, mismo tope diario y misma constancia en el expediente.
 
 **Por qué el endpoint público no es un buzón abierto.** El `doPost` del Apps Script atiende a cualquiera que conozca la URL, así que:
 
@@ -262,6 +266,12 @@ Colección **de primer nivel**, no subcolección de cliente. La conciliación pr
 - **`repartoDe(m)` es la única forma de saber a quién se le abonó.** Los movimientos de un solo cliente —los de antes y el caso normal— no llevan `reparto`, y el helper los devuelve como un reparto de un renglón. Nadie debe mirar `m.cedula` directamente.
 - El diálogo **exige que el reparto cuadre con el monto** antes de guardar: si no, la suma de los abonos no coincidiría con lo que entró a la cuenta.
 - `monto` sigue siendo el total de la transacción, que es lo que usa la conciliación entre los tres socios: ese reparto no cambia porque el pago venga de un cliente o de cuatro.
+
+**El paso se mueve solo cuando el pago cubre lo que se debe.** Registrar el pago y además acordarse de mover el paso era un trámite doble que se olvidaba, y el cliente se quedaba en *Presentado* ya estando al día. Ahora, al guardar un movimiento, quien quede con saldo cero pasa solo a *Pagado* (`pasarAPagadoSiQuedoAlDia`), y el recibo del diálogo lo dice. Tres precisiones:
+
+- **Solo desde *Presentado*.** Nunca desde antes: un abono adelantado en *Documentos* no puede saltarse Elaboración ni la presentación misma. Si todavía no ha presentado, el pago se registra y el paso se queda donde está — el saldo en cero ya se ve en el bloque *Cobro*.
+- **Se compara contra `cobroDe`**, que es honorarios **más** el cargo por entrega tardía: eso es lo que de verdad se debe.
+- Deja **constancia** en el expediente, y solo si está traído: las notas de un cliente sin cargar no se sincronizan. Con reparto, se evalúa **cada** cédula del movimiento.
 
 **El cliente se busca, no se escoge de una lista.** El campo del diálogo es un buscador por nombre o cédula (`datalist` + `cedulaEscrita`); con noventa clientes, el desplegable era inservible.
 
