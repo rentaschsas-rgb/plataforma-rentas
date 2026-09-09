@@ -261,10 +261,32 @@ Colección **de primer nivel**, no subcolección de cliente. La conciliación pr
 }
 ```
 
+**Un movimiento puede no ser un pago, sino un traslado entre socios.** El reparto dice cuánto le toca a cada quien, pero lo que uno ya le pasó al otro no estaba en ninguna parte: se acordaba de memoria. Ahora se registra en la misma colección y sale en la misma tabla, marcado con `tipo` y con dos campos propios:
+
+```js
+{
+  tipo: "traslado",           // ausente (o cualquier otra cosa) = pago de cliente
+  fecha: "2026-07-20",
+  de:   "Johanna",            // quién entregó
+  para: "John",               // quién recibió
+  monto: 100000,
+  medio: "Nequi",
+  referencia: "Reparto de julio",   // aquí va el CONCEPTO: es su razón de ser
+  cedula: "", reparto: [], quien: "",
+  conciliado: false
+}
+```
+
+- **No es un ingreso.** No suma al recaudado (ni en Bancos ni en el tablero de Pagos), no le abona a ningún cliente y no cambia lo que a cada quien le corresponde. `repartoDe()` devuelve `[]` para un traslado, así que ni la cartera ni el paso automático lo ven.
+- **Sí mueve el saldo.** La tarjeta de reparto descuenta lo trasladado: `difDeGrupo(g)` = lo recibido de clientes **+** lo que le trasladaron **−** lo que trasladó **−** lo que le corresponde. Un traslado entre Johanna y Leidy, que van en la misma bolsa, se anula solo.
+- **`difDeGrupo` es la única fórmula.** La tarjeta y el recibo del diálogo la llaman a ella: si se cambia, los dos siguen diciendo lo mismo.
+- El concepto es **obligatorio** y un traslado a uno mismo se rechaza: sin eso no es un soporte de nada.
+
 **Un pago puede ser de varios clientes.** Una sola transferencia paga a todo un grupo familiar, y antes había que partirla a mano en dos movimientos que ya no cuadraban con el extracto. Ahora el movimiento es uno solo y `reparto` dice cuánto le toca a cada quien. Reglas:
 
 - **`repartoDe(m)` es la única forma de saber a quién se le abonó.** Los movimientos de un solo cliente —los de antes y el caso normal— no llevan `reparto`, y el helper los devuelve como un reparto de un renglón. Nadie debe mirar `m.cedula` directamente.
-- El diálogo **exige que el reparto cuadre con el monto** antes de guardar: si no, la suma de los abonos no coincidiría con lo que entró a la cuenta.
+- **El cliente entra con su precio acordado** (`cobroDe`: honorarios más el cargo por entrega tardía), no con lo que sobre del monto. Lo que se le abona es lo que se le cobra, y lo recibido puede ser un abono parcial o traer de más; el diálogo muestra el acordado al lado del nombre y el monto siempre es un campo editable, también cuando el cliente es uno solo.
+- El diálogo **exige que el reparto cuadre con el monto** antes de guardar —con uno o con cuatro clientes—: si no, la suma de los abonos no coincidiría con lo que entró a la cuenta. Cuando el cliente es uno solo y pagó menos de lo acordado, un botón deja lo recibido de un clic.
 - `monto` sigue siendo el total de la transacción, que es lo que usa la conciliación entre los tres socios: ese reparto no cambia porque el pago venga de un cliente o de cuatro.
 
 **El paso se mueve solo cuando el pago cubre lo que se debe.** Registrar el pago y además acordarse de mover el paso era un trámite doble que se olvidaba, y el cliente se quedaba en *Presentado* ya estando al día. Ahora, al guardar un movimiento, quien quede con saldo cero pasa solo a *Pagado* (`pasarAPagadoSiQuedoAlDia`), y el recibo del diálogo lo dice. Tres precisiones:

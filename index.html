@@ -772,6 +772,7 @@ select.campo--min{padding:5px 24px 5px 9px;font-size:var(--t-xs);border-radius:v
           <div class="marco__barra">
             <span class="marco__cuenta" id="ctBancos"></span>
             <button class="btn btn--fuerte" id="btnNuevoMov">+ Nuevo movimiento</button>
+            <button class="btn" id="btnNuevoTras">⇄ Traslado entre socios</button>
             <button class="btn" data-limpiar="tBancos">Limpiar filtros</button>
           </div>
           <div class="desplaza"><table id="tBancos"></table></div>
@@ -850,6 +851,34 @@ select.campo--min{padding:5px 24px 5px 9px;font-size:var(--t-xs);border-radius:v
       <button class="btn" id="btnOtroMov" hidden>Registrar otro</button>
       <button class="btn btn--fuerte" id="btnListoMov" hidden>Listo</button>
       <button class="btn btn--fuerte" id="btnGuardarMov" type="submit" form="formMov">Registrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Traslado entre socios: el soporte de lo que uno ya le pasó al otro.
+     Sin cliente, porque aquí no hay a quién abonarle. -->
+<div class="modal" id="modalTras" hidden>
+  <div class="modal__caja" role="dialog" aria-modal="true" aria-labelledby="trasT">
+    <div class="modal__cab">
+      <div class="modal__t" id="trasT">Traslado entre socios</div>
+      <button class="btn btn--icono" id="btnCerrarTras" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal__cu">
+      <form class="form-mov" id="formTras">
+        <div><label for="tFecha">Fecha</label><input class="campo" type="date" id="tFecha" required></div>
+        <div><label for="tMonto">Monto</label><input class="campo" id="tMonto" inputmode="numeric" placeholder="0" required></div>
+        <div><label for="tDe">De</label><select class="campo" id="tDe"></select></div>
+        <div><label for="tPara">Para</label><select class="campo" id="tPara"></select></div>
+        <div style="grid-column:1/-1"><label for="tMedio">Medio</label><select class="campo" id="tMedio"></select></div>
+        <div style="grid-column:1/-1"><label for="tConcepto">Concepto</label>
+          <input class="campo" id="tConcepto" required placeholder="por qué se traslada: «reparto de julio», «abono de lo que le debía»…"></div>
+      </form>
+      <div id="reciboTras" hidden></div>
+    </div>
+    <div class="modal__pie">
+      <span class="aviso" id="avisoTras">No suma al recaudado: solo mueve el saldo de un socio al otro.</span>
+      <button class="btn btn--fuerte" id="btnListoTras" hidden>Listo</button>
+      <button class="btn btn--fuerte" id="btnGuardarTras" type="submit" form="formTras">Registrar</button>
     </div>
   </div>
 </div>
@@ -1093,6 +1122,36 @@ const REPARTO = [
   {id:'JOHN', nombre:'John',            cuota:0.30, personas:['John']}
 ];
 
+/* ── Traslados entre socios ────────────────────────────────────
+   No todo lo que se anota en Bancos es plata de un cliente. Cuando el
+   reparto queda descuadrado —uno recibió de más y le tiene que pasar al
+   otro lo suyo—, ese traslado necesita su soporte: fecha, monto y concepto.
+   Va en la misma colección y en la misma tabla, marcado con
+   `tipo:'traslado'` y con dos campos propios, `de` y `para`.
+
+   Lo que NO es: un ingreso. No suma al recaudado, no le abona a ningún
+   cliente y no cambia lo que a cada quien le corresponde; solo mueve el
+   saldo de un lado al otro, que es justo lo que pasó en la vida real. */
+const esTraslado   = m => m.tipo === 'traslado';
+const pagosMov     = () => MOVS.filter(m => !esTraslado(m));
+const trasladosMov = () => MOVS.filter(esTraslado);
+
+// Lo que un grupo ya movió: lo que le trasladaron menos lo que trasladó. Un
+// traslado entre Johanna y Leidy, que van en la misma bolsa, se anula solo.
+const trasladoNetoDe = personas => trasladosMov().reduce((s,m)=>
+  s + (personas.includes(m.para) ? m.monto : 0)
+    - (personas.includes(m.de)   ? m.monto : 0), 0);
+
+/* Lo que a un grupo le sobra (+) o le falta (-) después de todo lo recibido
+   y lo ya trasladado. Es el número de la tarjeta de reparto y el del recibo
+   del traslado: uno solo, para que los dos digan lo mismo. */
+function difDeGrupo(g){
+  const pagos = pagosMov();
+  const total = pagos.reduce((s,m)=>s+m.monto,0);
+  const recibido = pagos.filter(m=>g.personas.includes(m.quien)).reduce((s,m)=>s+m.monto,0);
+  return recibido + trasladoNetoDe(g.personas) - total*g.cuota;
+}
+
 // Vencimiento por los DOS últimos dígitos de la cédula.
 // Tomado del Calendario Tributario 2026 — Renta Personas Naturales.
 // El "00" se trata como 100 (ver venceDe), por eso el último tramo va 99..100.
@@ -1209,9 +1268,10 @@ function venceDe(c){
    `m.reparto` ([{cedula,monto}]); los movimientos de una sola cédula, que son
    los de antes y los del caso normal, se leen como un reparto de un renglón.
    Nadie más debe mirar `m.cedula` para saber a quién se le abonó. */
-const repartoDe = m => (m.reparto && m.reparto.length)
-  ? m.reparto.filter(r=>r.cedula)
-  : (m.cedula ? [{cedula:m.cedula, monto:m.monto}] : []);
+const repartoDe = m => esTraslado(m) ? []      // un traslado no le abona a nadie
+  : (m.reparto && m.reparto.length)
+    ? m.reparto.filter(r=>r.cedula)
+    : (m.cedula ? [{cedula:m.cedula, monto:m.monto}] : []);
 const cedulasDe = m => repartoDe(m).map(r=>r.cedula);
 const pagadoDe = ced => MOVS.reduce((s,m)=>
   s + repartoDe(m).reduce((t,r)=> t + (r.cedula===ced ? (r.monto||0) : 0), 0), 0);
@@ -1957,7 +2017,7 @@ function sitPago(d){
 
 function pintarPagos(rs){
   const fact = CLIENTES.reduce((s,c)=>s+(c.cancelado?0:cobroDe(c)),0);   // lo cancelado no se factura
-  const rec  = MOVS.reduce((s,m)=>s+m.monto,0);
+  const rec  = pagosMov().reduce((s,m)=>s+m.monto,0);
   const deudores = CLIENTES.filter(c=>debeDe(c, rs.get(c.cedula)));
   $('#kFact').textContent   = pesos(fact);
   $('#kRec').textContent    = pesos(rec);
@@ -1992,29 +2052,37 @@ function pintarPagos(rs){
 }
 
 function pintarBancos(){
-  const total = MOVS.reduce((s,m)=>s+m.monto,0);
+  const pagos = pagosMov(), tras = trasladosMov();
+  const total = pagos.reduce((s,m)=>s+m.monto,0);
   $('#reparto').innerHTML = REPARTO.map(g=>{
-    const recibido = MOVS.filter(m=>g.personas.includes(m.quien)).reduce((s,m)=>s+m.monto,0);
-    const toca = total*g.cuota, dif = recibido-toca;
+    const recibido = pagos.filter(m=>g.personas.includes(m.quien)).reduce((s,m)=>s+m.monto,0);
+    const movido = trasladoNetoDe(g.personas);      // + le trasladaron, - trasladó
+    const toca = total*g.cuota, dif = difDeGrupo(g);
     const clase = Math.abs(dif)<1?'cero':dif>0?'debe':'favor';
     const frase = Math.abs(dif)<1 ? 'Cuentas cuadradas.'
       : dif>0 ? `Recibió de más. Debe trasladar <strong>${pesos(dif)}</strong>.`
               : `Recibió de menos. Le deben <strong>${pesos(-dif)}</strong>.`;
     const detalle = g.personas.length>1 ? g.personas.map(p=>
-      `<div class="socio__l"><span style="padding-left:12px;color:var(--tx-3)">${p}</span><span>${pesos(MOVS.filter(m=>m.quien===p).reduce((s,m)=>s+m.monto,0))}</span></div>`).join('') : '';
+      `<div class="socio__l"><span style="padding-left:12px;color:var(--tx-3)">${p}</span><span>${pesos(pagos.filter(m=>m.quien===p).reduce((s,m)=>s+m.monto,0))}</span></div>`).join('') : '';
+    // Las dos líneas del traslado solo salen si hubo alguno: si no, sobran.
+    const lTras = Math.round(movido) === 0 ? '' :
+      `<div class="socio__l"><span>${movido>0?'Le trasladaron':'Trasladó'}</span><span>${
+        movido>0?'':'−'}${pesos(Math.abs(movido))}</span></div>
+       <div class="socio__l"><span><b>Tiene en la mano</b></span><span><b>${pesos(recibido+movido)}</b></span></div>`;
     return `<div class="socio tarjeta-vidrio">
       <div class="socio__n">${esc(g.nombre)} <span class="socio__q">${Math.round(g.cuota*100)}%</span></div>
       <div style="margin-top:14px">
         <div class="socio__l"><span>Le corresponde</span><span>${pesos(toca)}</span></div>
-        <div class="socio__l"><span>Recibió</span><span>${pesos(recibido)}</span></div>${detalle}</div>
+        <div class="socio__l"><span>Recibió de clientes</span><span>${pesos(recibido)}</span></div>${detalle}${lTras}</div>
       <div class="saldo saldo--${clase}">${frase}</div></div>`;
   }).join('') + `<div class="socio tarjeta-vidrio">
       <div class="socio__n">Total recaudado</div>
       <div style="margin-top:14px">
-        <div class="socio__l"><span>Movimientos</span><span>${MOVS.length}</span></div>
-        <div class="socio__l"><span>Suma</span><span>${pesos(total)}</span></div>
+        <div class="socio__l"><span>Pagos de clientes</span><span>${pagos.length}</span></div>
+        <div class="socio__l"><span>Suma</span><span>${pesos(total)}</span></div>${
+        tras.length ? `<div class="socio__l"><span>Traslados entre socios</span><span>${tras.length}</span></div>` : ''}
         <div class="socio__l"><span>Sin conciliar</span><span>${MOVS.filter(m=>!m.conciliado).length}</span></div></div>
-      <div class="saldo saldo--cero">El reparto se calcula sobre el total recibido por los tres.</div></div>`;
+      <div class="saldo saldo--cero">El reparto se calcula sobre lo recibido de clientes; los traslados solo mueven el saldo entre los socios.</div></div>`;
 
   const nombreDe = ced => (CLIENTES.find(c=>c.cedula===ced)||{sheet:{}}).sheet.nombre || 'Sin asignar';
   const n = Tabla('tBancos', [
@@ -2022,15 +2090,20 @@ function pintarBancos(){
     // Un movimiento puede repartirse entre varios clientes; el filtro busca
     // por cualquiera de ellos, y la celda los enseña con lo que le tocó a cada uno.
     {clave:'cli',  et:'Cliente',pista:'nombre',
-      valor:m=>repartoDe(m).map(r=>nombreDe(r.cedula)+' '+r.cedula).join(' ') || 'Sin asignar',
+      valor:m=>esTraslado(m) ? `Traslado entre socios ${m.de} ${m.para}`
+        : (repartoDe(m).map(r=>nombreDe(r.cedula)+' '+r.cedula).join(' ') || 'Sin asignar'),
       pinta:m=>{ const rp = repartoDe(m);
+        if(esTraslado(m)) return `<div class="nom">${esc(m.de)} → ${esc(m.para)}</div><div class="sub">traslado entre socios</div>`;
         if(!rp.length) return `<div class="nom">Sin asignar</div>`;
         if(rp.length===1) return `<div class="nom">${esc(nombreDe(rp[0].cedula))}</div><div class="sub">${esc(rp[0].cedula)}</div>`;
         return `<div class="nom">${rp.length} clientes</div><div class="sub">${
           rp.map(r=>`${esc(nombreDe(r.cedula))} · ${pesos(r.monto||0)}`).join('<br>')}</div>`; }},
     {clave:'monto',et:'Monto',num:true,pista:'monto',valor:m=>m.monto,ordenValor:m=>m.monto,pinta:m=>`<span class="dato">${pesos(m.monto)}</span>`},
-    {clave:'quien',et:'Recibido por',tipo:'opciones',opciones:PERSONAS,valor:m=>m.quien,pinta:m=>`<span class="pastilla pastilla--curso">${esc(m.quien)}</span>`},
+    {clave:'quien',et:'Recibido por',tipo:'opciones',opciones:PERSONAS,
+      valor:m=>esTraslado(m) ? m.para : m.quien,
+      pinta:m=>`<span class="pastilla pastilla--curso">${esc(esTraslado(m) ? m.para : m.quien)}</span>`},
     {clave:'medio',et:'Medio',tipo:'opciones',opciones:mediosVistos,valor:m=>m.medio,pinta:m=>`<span class="dato">${esc(m.medio)}</span>`},
+    // En un traslado esta columna lleva el concepto, que es su razón de ser.
     {clave:'ref',  et:'Referencia',pista:'texto',valor:m=>m.referencia,pinta:m=>`<span style="color:var(--tx-2)">${esc(m.referencia||'—')}</span>`},
     {clave:'conc', et:'Conciliado',tipo:'opciones',opciones:['sí','no'],valor:m=>m.conciliado?'sí':'no',
       pinta:m=>`<button class="pastilla ${m.conciliado?'pastilla--ok':''}" data-accion="conc" data-id="${esc(m.id)}" title="Marcar como conciliado">${m.conciliado?'sí':'marcar'}</button>`},
@@ -2049,7 +2122,7 @@ document.addEventListener('click', e=>{
   const i = MOVS.findIndex(x=>x.id===b.dataset.id); if(i<0) return;
   // `guardar()` explícito: pintar ya no escribe (ver pintar()).
   if(b.dataset.accion==='conc'){ MOVS[i].conciliado = !MOVS[i].conciliado; guardar(); pintar(); }
-  if(b.dataset.accion==='editar'){ abrirMov(MOVS[i]); }
+  if(b.dataset.accion==='editar'){ esTraslado(MOVS[i]) ? abrirTras(MOVS[i]) : abrirMov(MOVS[i]); }
   if(b.dataset.accion==='borrar'){
     const [q] = MOVS.splice(i,1); guardar(); pintar();
     brindis(`Movimiento de ${pesos(q.monto)} eliminado.`, ()=>MOVS.splice(i,0,q));
@@ -4088,6 +4161,7 @@ document.addEventListener('click', e=>{
 document.addEventListener('keydown', e=>{
   if(e.key==='Escape'){
     if(!$('#modalMov').hidden) cerrarMov();
+    else if(!$('#modalTras').hidden) cerrarTras();
     else if(!$('#modal').hidden) cerrarModal();
     return;
   }
@@ -4139,40 +4213,54 @@ function cedulaEscrita(txt){
 
 const sumaCli = () => movCli.reduce((s,r)=>s+(r.monto||0),0);
 
+/* Lo que se le cobra a un cliente: su precio acordado más el cargo por
+   entrega tardía si lo tiene. Es lo que el diálogo propone abonarle. */
+const acordadoDe = ced => { const c = CLIENTES.find(x=>x.cedula===ced); return c ? cobroDe(c) : 0; };
+
 function pintarMovCli(){
   const total = normNumero($('#mMonto').value);
-  if(movCli.length === 1) movCli[0].monto = total;   // uno solo se lo lleva todo
 
-  $('#mLista').innerHTML = movCli.map((r,i)=>`
+  // El monto de cada cliente se escribe siempre, también cuando es uno solo:
+  // lo que se le abona ya no es «lo que entró» sino lo suyo, y tiene que
+  // poder corregirse sin tener que agregar un segundo cliente.
+  $('#mLista').innerHTML = movCli.map((r,i)=>{
+    const ac = acordadoDe(r.cedula);
+    return `
     <div class="mov-cli">
-      <div class="mov-cli__n"><b>${esc(nombreCli(r.cedula))}</b><span class="sub">${esc(r.cedula)}</span></div>
-      ${movCli.length>1
-        ? `<input class="campo mov-cli__m" data-mcli="${i}" inputmode="numeric" value="${r.monto?Number(r.monto).toLocaleString('es-CO'):''}" aria-label="Monto de ${esc(nombreCli(r.cedula))}">`
-        : `<span class="dato">${pesos(total)}</span>`}
+      <div class="mov-cli__n"><b>${esc(nombreCli(r.cedula))}</b><span class="sub">${esc(r.cedula)} · ${
+        ac ? `acordado ${pesos(ac)}` : 'sin valor acordado'}</span></div>
+      <input class="campo mov-cli__m" data-mcli="${i}" inputmode="numeric" value="${r.monto?Number(r.monto).toLocaleString('es-CO'):''}" aria-label="Monto de ${esc(nombreCli(r.cedula))}">
       <button class="btn btn--icono" type="button" data-quitacli="${i}" aria-label="Quitar a ${esc(nombreCli(r.cedula))}">✕</button>
-    </div>`).join('');
+    </div>`;}).join('');
 
   const resto = total - sumaCli(), n = $('#mResto');
   if(!movCli.length){
     n.className = 'sinnota';
     n.textContent = 'Sin asignar. Si una sola transacción paga a varios clientes, agrégalos todos y reparte el monto entre ellos.';
-  }else if(movCli.length === 1){
-    n.className = 'sinnota';
-    n.textContent = 'Todo el monto se le abona a este cliente. Agrega otro si la transacción paga a más de uno.';
-  }else{
-    n.className = 'mov-resto' + (resto === 0 ? '' : ' mov-resto--mal');
-    n.textContent = resto === 0 ? 'El reparto cuadra con el monto.'
-      : resto > 0 ? `Faltan ${pesos(resto)} por repartir.`
-                  : `El reparto se pasa ${pesos(-resto)} del monto.`;
+    return;
   }
+  n.className = 'mov-resto' + (resto === 0 ? '' : ' mov-resto--mal');
+  if(resto === 0){
+    n.textContent = movCli.length === 1 ? 'El abono cuadra con el monto recibido.' : 'El reparto cuadra con el monto.';
+    return;
+  }
+  // Un abono parcial es lo normal: el botón deja el recibido de un clic, sin
+  // obligar a reescribir el número que el diálogo acaba de proponer.
+  n.innerHTML = (resto > 0 ? `Faltan ${pesos(resto)} por repartir.` : `El reparto se pasa ${pesos(-resto)} del monto.`)
+    + (movCli.length === 1 ? ` <button class="btn" type="button" id="btnAjustaCli">Abonarle los ${pesos(total)} recibidos</button>` : '');
+  const bt = $('#btnAjustaCli');
+  if(bt) bt.onclick = ()=>{ movCli[0].monto = normNumero($('#mMonto').value); pintarMovCli(); };
 }
 
 function agregarCli(){
   const ced = cedulaEscrita($('#mCliente').value);
   if(!ced){ $('#mCliente').focus(); brindis('No encuentro ese cliente. Escógelo de la lista.'); return; }
   if(movCli.some(r=>r.cedula===ced)){ $('#mCliente').value=''; return; }
-  // El que entra se lleva lo que quede sin repartir, que es el caso normal.
-  movCli.push({cedula:ced, monto:Math.max(0, normNumero($('#mMonto').value) - sumaCli())});
+  /* Entra con SU precio acordado, no con lo que sobre del monto: lo que se
+     le abona es lo que se le cobra, y el pago puede ser un abono parcial, o
+     una transferencia que trae de más. Si no cuadra con lo recibido, el
+     aviso de abajo lo dice y se corrige ahí mismo. */
+  movCli.push({cedula:ced, monto:acordadoDe(ced)});
   $('#mCliente').value = '';
   pintarMovCli();
 }
@@ -4256,6 +4344,124 @@ $('#btnOtroMov').onclick   = ()=>{
 };
 $('#modalMov').onclick = e=>{ if(e.target===$('#modalMov')) cerrarMov(); };
 
+/* ══════════════════════════════════════════════════════════════
+   TRASLADO ENTRE SOCIOS
+   El reparto dice cuánto le toca a cada uno; esto deja el soporte de lo
+   que ya se le pasó. Mismo sitio que los pagos —es la misma cuenta de
+   banco— pero sin cliente y con dos campos propios: de quién y para quién.
+   ══════════════════════════════════════════════════════════════ */
+let trasEditando = null;
+
+function abrirTras(mov){
+  trasEditando = mov || null;
+  $('#trasT').textContent = mov ? 'Editar traslado' : 'Traslado entre socios';
+  opciones($('#tDe'),    PERSONAS, mov ? mov.de   : PERSONAS[0]);
+  opciones($('#tPara'),  PERSONAS, mov ? mov.para : PERSONAS[PERSONAS.length-1]);
+  opciones($('#tMedio'), MEDIOS,   mov ? mov.medio : '');
+  $('#tFecha').value    = mov ? mov.fecha : hoyISO();
+  $('#tMonto').value    = mov ? Number(mov.monto||0).toLocaleString('es-CO') : '';
+  $('#tConcepto').value = mov ? (mov.referencia||'') : '';
+  $('#reciboTras').hidden = true;
+  $('#formTras').hidden = false;
+  $('#btnGuardarTras').hidden = false;
+  $('#btnGuardarTras').disabled = false;
+  $('#btnGuardarTras').textContent = mov ? 'Guardar cambios' : 'Registrar';
+  $('#btnListoTras').hidden = true;
+  $('#avisoTras').className = 'aviso';
+  $('#avisoTras').textContent = mov
+    ? 'Corriges el traslado para todos: los tres ven el cambio.'
+    : 'No suma al recaudado: solo mueve el saldo de un socio al otro.';
+  $('#modalTras').hidden = false;
+  $('#tMonto').focus();
+}
+const cerrarTras = ()=>{ $('#modalTras').hidden = true; trasEditando = null; };
+
+$('#btnNuevoTras').onclick   = ()=>abrirTras();
+$('#btnCerrarTras').onclick  = cerrarTras;
+$('#btnListoTras').onclick   = cerrarTras;
+$('#modalTras').onclick = e=>{ if(e.target===$('#modalTras')) cerrarTras(); };
+$('#tMonto').addEventListener('input', e=>{
+  const n = e.target.value.replace(/[^\d]/g,'');
+  e.target.value = n ? Number(n).toLocaleString('es-CO') : '';
+});
+
+$('#formTras').onsubmit = async e=>{
+  e.preventDefault();
+  const monto = normNumero($('#tMonto').value);
+  if(!(monto>0)){ $('#tMonto').focus(); return; }
+
+  const de = $('#tDe').value, para = $('#tPara').value;
+  // Un traslado a uno mismo no mueve nada y descuadraría la tarjeta.
+  if(de === para){
+    $('#avisoTras').className = 'aviso aviso--mal';
+    $('#avisoTras').textContent = 'El traslado va de un socio a otro: escoge dos distintos.';
+    return;
+  }
+  const concepto = $('#tConcepto').value.trim();
+  if(!concepto){ $('#tConcepto').focus(); return; }
+
+  const cuerpo = {
+    tipo:'traslado', fecha:$('#tFecha').value, de, para, monto,
+    medio:$('#tMedio').value, referencia:concepto,
+    cedula:'', reparto:[], quien:''      // no le abona a ningún cliente
+  };
+
+  const editando = trasEditando;
+  const antes = editando ? {...editando} : null;
+  let mov;
+
+  if(editando){
+    mov = editando;
+    Object.assign(mov, cuerpo, {editadoPor: USUARIO?.uid || '', editado: hoyISO()});
+  }else{
+    mov = {id:idNuevo('m'), ...cuerpo, conciliado:false, creadoPor: USUARIO?.uid || ''};
+    MOVS.push(mov);
+  }
+
+  $('#btnGuardarTras').disabled = true;
+  $('#btnGuardarTras').textContent = 'Guardando…';
+
+  const r = await guardar();
+
+  if(r && r.ok === false){
+    // No quedó guardado: se deshace en memoria para no mentir en pantalla.
+    if(editando){ for(const k of Object.keys(mov)) delete mov[k]; Object.assign(mov, antes); }
+    else { const i = MOVS.findIndex(x=>x.id===mov.id); if(i>=0) MOVS.splice(i,1); }
+    pintar();
+    $('#avisoTras').className = 'aviso aviso--mal';
+    $('#avisoTras').textContent = 'No se guardó. ' + r.error;
+    $('#btnGuardarTras').disabled = false;
+    $('#btnGuardarTras').textContent = 'Reintentar';
+    return;
+  }
+
+  pintar();
+
+  // El recibo dice lo que queda por trasladar DESPUÉS de este movimiento:
+  // es la pregunta que uno se hace justo al registrarlo.
+  const g = REPARTO.find(x=>x.personas.includes(mov.de));
+  const dif = g ? difDeGrupo(g) : 0;
+  $('#reciboTras').className = 'recibo';
+  $('#reciboTras').innerHTML = `
+    <div class="recibo__r">Traslado ${editando ? 'actualizado' : 'registrado'}</div>
+    <div class="recibo__n">${pesos(mov.monto)}</div>
+    <div class="recibo__q">de ${esc(mov.de)} para ${esc(mov.para)}</div>
+    <dl class="recibo__dl">
+      <div class="recibo__l"><dt>Fecha</dt><dd>${fLarga(mov.fecha)}</dd></div>
+      <div class="recibo__l"><dt>Medio</dt><dd>${esc(mov.medio)}</dd></div>
+      <div class="recibo__l"><dt>Concepto</dt><dd>${esc(mov.referencia)}</dd></div>
+      ${g ? `<div class="recibo__l"><dt>${esc(g.nombre)}</dt><dd>${
+        Math.abs(dif)<1 ? 'al día' : dif>0 ? `debe trasladar ${pesos(dif)}` : `le deben ${pesos(-dif)}`}</dd></div>` : ''}
+    </dl>
+    <p class="sinnota" style="margin-top:10px">Queda como soporte de lo ya trasladado. No suma al recaudado ni le abona a ningún cliente.</p>`;
+  $('#reciboTras').hidden = false;
+  $('#formTras').hidden = true;
+  $('#btnGuardarTras').hidden = true;
+  $('#btnListoTras').hidden = false;
+  $('#avisoTras').className = 'aviso';
+  $('#avisoTras').textContent = 'Queda sin conciliar hasta que lo marques en la tabla.';
+};
+
 function pintarRecibo(mov, editado, movidos){
   const rp = repartoDe(mov);
   const saldoDe = ced => {
@@ -4290,14 +4496,17 @@ $('#formMov').onsubmit = async e=>{
   const monto = normNumero($('#mMonto').value);
   if(!(monto>0)){ $('#mMonto').focus(); return; }
 
-  // Con varios clientes el reparto tiene que cuadrar con el monto: si no, la
-  // suma de abonos no coincidiría con lo que entró a la cuenta.
-  if(movCli.length > 1 && sumaCli() !== monto){
+  /* Lo abonado tiene que cuadrar con el monto: si no, la suma de abonos no
+     coincidiría con lo que entró a la cuenta. Vale también para un solo
+     cliente, porque ahora entra con su precio acordado y no con lo recibido:
+     si pagó menos, se le baja el abono antes de guardar. */
+  if(movCli.length && sumaCli() !== monto){
     $('#avisoMov').className = 'aviso aviso--mal';
-    $('#avisoMov').textContent = `El reparto suma ${pesos(sumaCli())} y el movimiento es de ${pesos(monto)}.`;
+    $('#avisoMov').textContent = movCli.length === 1
+      ? `Le estás abonando ${pesos(sumaCli())} y el movimiento es de ${pesos(monto)}.`
+      : `El reparto suma ${pesos(sumaCli())} y el movimiento es de ${pesos(monto)}.`;
     return;
   }
-  if(movCli.length === 1) movCli[0].monto = monto;
 
   const cuerpo = {
     fecha: $('#mFecha').value,
@@ -4972,7 +5181,9 @@ function demo(){
   MOVS = [
     {id:'m1',fecha:'2026-07-15',cedula:'10000001',monto:380000,quien:'Johanna',medio:'Bancolombia',referencia:'Transferencia',conciliado:true},
     {id:'m2',fecha:'2026-07-02',cedula:'10000082',monto:600000,quien:'Leidy',  medio:'Nequi',      referencia:'',             conciliado:true},
-    {id:'m3',fecha:'2026-07-18',cedula:'10000005',monto:200000,quien:'John',   medio:'Davivienda', referencia:'Abono 1 de 2', conciliado:false}
+    {id:'m3',fecha:'2026-07-18',cedula:'10000005',monto:200000,quien:'John',   medio:'Davivienda', referencia:'Abono 1 de 2', conciliado:false},
+    // Un traslado entre socios: no suma al recaudado, solo mueve el saldo.
+    {id:'m4',fecha:'2026-07-20',tipo:'traslado',de:'Johanna',para:'John',monto:100000,medio:'Nequi',referencia:'Reparto de julio',conciliado:false}
   ];
 }
 /* La muestra es SOLO para la pantalla sin conexión. Con la sesión abierta,
