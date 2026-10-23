@@ -1617,10 +1617,15 @@ function refrescar(){
     // dejaba de actualizarse hasta recargar la página.
     if(refrescoVigilado !== a){
       refrescoVigilado = a;
-      a.addEventListener('blur', ()=>{
+      /* Se mira en la vuelta siguiente, no en el `blur` mismo: ahí el foco
+         todavía no ha llegado al campo que se pulsó, `activeElement` es el
+         body y se repintaba todo, con lo que la casilla siguiente del cuadro
+         de cifras desaparecía bajo el cursor y la página saltaba. Así, si el
+         foco pasó a otro campo, refrescar() vuelve a esperar por ese. */
+      a.addEventListener('blur', ()=> setTimeout(()=>{
         refrescoVigilado = null;
         if(refrescoPendiente){ refrescoPendiente = false; refrescar(); }
-      }, {once:true});
+      }), {once:true});
     }
     return;
   }
@@ -1646,6 +1651,7 @@ function enrutar(){
     const c = CLIENTES.find(x=>x.cedula===partes[1]);
     if(c){
       vistaActual='cliente'; cedulaActual=c.cedula;
+      hitosSembradoPara = null;       // llegar = vale abrir el paso actual
       if(NUBE) cargarExpediente(c);   // repinta solo al llegar
       mostrar('cliente'); pintarCliente(c); return;
     }
@@ -2871,6 +2877,7 @@ function bloquePresentacion(c){
    ══════════════════════════════════════════════════════════════ */
 
 const hitosAbiertos = new Set();
+let hitosSembradoPara = null;   // cédula a la que ya se le abrió el paso actual
 const catsAbiertas  = new Set();
 /* El expediente abre plegado. Lo que despliegues se queda desplegado
    mientras dure la sesión, también al cambiar de cliente: si viniste a
@@ -2905,7 +2912,13 @@ function pintarCliente(c){
   // Quién puede mover el chulito de «revisado». Los demás lo ven apagado.
   const puedeRevisar = esAdmin || PERFIL?.rol === 'verificador' || !NUBE;
   const hon = honorariosDe(c);
-  if(!hitosAbiertos.size) hitosAbiertos.add(c.paso);
+  /* El paso actual se despliega solo al LLEGAR al expediente, no en cada
+     repintado: si lo cerraste todo, cada cifra guardada volvía a abrir
+     Elaboración y empujaba la página hacia arriba. */
+  if(hitosSembradoPara !== c.cedula){
+    if(!hitosAbiertos.size) hitosAbiertos.add(c.paso);
+    hitosSembradoPara = c.cedula;
+  }
 
   $('#tituloVista').textContent = c.sheet.nombre;
   $('#subVista').textContent = `C.C. ${c.cedula}${c.sheet.grupo?' · grupo '+c.sheet.grupo:''} · vence ${fLarga(r.vence)}`;
