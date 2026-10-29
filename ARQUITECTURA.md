@@ -301,6 +301,8 @@ Colección **de primer nivel**, no subcolección de cliente. La conciliación pr
 
 **Medios de pago:** `Efectivo`, `Nu`, `Nequi`, `Daviplata`. Los movimientos viejos con un medio que ya no está en la lista (`Bancolombia`, `Davivienda`) **no se reescriben**: el filtro de la tabla y el desplegable del diálogo añaden los que aparezcan en los datos, para no perderlos ni obligar a reclasificar el histórico.
 
+**Exportar a Excel.** El botón *⬇ Excel* de Bancos baja **todo el período**, sin mirar los filtros de la tabla: conciliar con la mitad de los movimientos no cuadra nunca. Trae dos hojas: *Movimientos*, un renglón por transacción (lo que sale en el extracto, traslados incluidos), y *Abonos por cliente*, un renglón por cédula según `repartoDe`. SheetJS se carga del CDN solo al primer clic. Las fechas se escriben como número de serie de Excel calculado en UTC: si se le pasa un `Date`, SheetJS resta los segundos de zona horaria y en Bogotá la fecha cae al día anterior.
+
 ### `/sincronizaciones/{id}`
 
 Bitácora de cada importación. Sirve para responder "¿por qué cambió este dato?".

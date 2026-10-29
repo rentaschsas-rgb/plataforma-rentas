@@ -773,6 +773,7 @@ select.campo--min{padding:5px 24px 5px 9px;font-size:var(--t-xs);border-radius:v
             <span class="marco__cuenta" id="ctBancos"></span>
             <button class="btn btn--fuerte" id="btnNuevoMov">+ Nuevo movimiento</button>
             <button class="btn" id="btnNuevoTras">⇄ Traslado entre socios</button>
+            <button class="btn" id="btnExcelMovs" title="Descarga todos los movimientos del período, sin filtros">⬇ Excel</button>
             <button class="btn" data-limpiar="tBancos">Limpiar filtros</button>
           </div>
           <div class="desplaza"><table id="tBancos"></table></div>
@@ -4390,6 +4391,82 @@ function abrirTras(mov){
 const cerrarTras = ()=>{ $('#modalTras').hidden = true; trasEditando = null; };
 
 $('#btnNuevoTras').onclick   = ()=>abrirTras();
+
+/* EXPORTAR A EXCEL, para conciliar contra el extracto. Sale TODO el período,
+   no lo filtrado: conciliar con la mitad de los movimientos no cuadra nunca.
+   Dos hojas: «Movimientos», un renglón por transacción (lo que se ve en el
+   banco, traslados incluidos), y «Abonos por cliente», un renglón por cédula
+   (un pago repartido sale en varios). SheetJS se trae solo al primer clic. */
+let xlsxCargando = null;
+function cargarXlsx(){
+  if(window.XLSX) return Promise.resolve();
+  return xlsxCargando ||= new Promise((ok, mal)=>{
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    // Hash fijo: corre en el mismo origen que la sesión de Firebase, así que
+    // un archivo alterado en el CDN no debe ejecutarse.
+    s.integrity = 'sha512-r22gChDnGvBylk90+2e/ycr3RVrDi8DIOkIGNhJlKfuyQM4tIRAI062MaV8sfjQKYVGjOBaZBOA87z+IhZE9DA==';
+    s.crossOrigin = 'anonymous';
+    s.onload = ok;
+    s.onerror = ()=>{ xlsxCargando = null; mal(new Error('No cargó SheetJS')); };
+    document.head.appendChild(s);
+  });
+}
+async function exportarMovsExcel(){
+  try { await cargarXlsx(); }
+  catch(e){ brindis('No se pudo cargar el generador de Excel. Revisa la conexión.'); return; }
+  const nombreDe = ced => (CLIENTES.find(c=>c.cedula===ced)||{sheet:{}}).sheet.nombre || '';
+  // Fecha como fecha de verdad (no texto), para que Excel la ordene y filtre.
+  // Va como número de serie de Excel calculado en UTC: pasándole un Date,
+  // SheetJS le resta segundos de zona horaria y en Bogotá cae al día anterior.
+  const fecha = f => f ? (Date.UTC(+f.slice(0,4), +f.slice(5,7)-1, +f.slice(8,10)) - Date.UTC(1899,11,30)) / 864e5 : '';
+  const orden = [...MOVS].sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
+  const movs = orden.map(m=>{ const rp = repartoDe(m);
+    return {
+      'Fecha': fecha(m.fecha),
+      'Tipo': esTraslado(m) ? 'Traslado' : 'Pago',
+      'Monto': m.monto||0,
+      'Recibido por': esTraslado(m) ? m.para : m.quien,
+      'Entregado por': esTraslado(m) ? m.de : '',
+      'Medio': m.medio||'',
+      'Referencia / concepto': m.referencia||'',
+      'Clientes': rp.map(r=>nombreDe(r.cedula)||r.cedula).join(' · '),
+      'Cédulas': rp.map(r=>r.cedula).join(' · '),
+      'Conciliado': m.conciliado ? 'sí' : 'no',
+      'ID': m.id
+    }; });
+  const abonos = orden.flatMap(m=>repartoDe(m).map(r=>({
+      'Fecha': fecha(m.fecha),
+      'Cédula': r.cedula,
+      'Cliente': nombreDe(r.cedula),
+      'Abono': r.monto||0,
+      'Total de la transacción': m.monto||0,
+      'Recibido por': m.quien,
+      'Medio': m.medio||'',
+      'Referencia': m.referencia||'',
+      'Conciliado': m.conciliado ? 'sí' : 'no',
+      'ID movimiento': m.id
+    })));
+  const hoja = (filas, anchos, cols$)=>{
+    const h = XLSX.utils.json_to_sheet(filas);
+    h['!cols'] = anchos.map(w=>({wch:w}));
+    // La primera columna es la fecha; las de cols$, dinero.
+    const rango = XLSX.utils.decode_range(h['!ref']||'A1');
+    for(let f=1; f<=rango.e.r; f++){
+      const cf = h[XLSX.utils.encode_cell({r:f, c:0})]; if(cf && cf.t==='n') cf.z = 'yyyy-mm-dd';
+      cols$.forEach(c=>{ const celda = h[XLSX.utils.encode_cell({r:f, c})]; if(celda) celda.z = '$ #,##0'; });
+    }
+    return h;
+  };
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja(movs,   [11,9,13,13,13,11,28,40,28,10,22], [2]),   'Movimientos');
+  XLSX.utils.book_append_sheet(libro, hoja(abonos, [11,13,32,13,13,13,11,28,10,22],   [3,4]), 'Abonos por cliente');
+  XLSX.writeFile(libro, `pagos_${PERIODO}_${hoyISO()}.xlsx`);
+  brindis(`Excel descargado: ${movs.length} movimientos, ${abonos.length} abonos.`);
+}
+$('#btnExcelMovs').onclick = ()=>exportarMovsExcel().catch(e=>{
+  console.error(e); brindis('No se pudo generar el Excel. El detalle está en la consola.');
+});
 $('#btnCerrarTras').onclick  = cerrarTras;
 $('#btnListoTras').onclick   = cerrarTras;
 $('#modalTras').onclick = e=>{ if(e.target===$('#modalTras')) cerrarTras(); };
@@ -5233,7 +5310,7 @@ $('#btnDemo').onclick = ()=>{
 
 // Sello de versión: sirve para confirmar, a simple vista y en consola, qué
 // build está cargado (y descartar que sea una copia vieja en caché).
-const BUILD = 'v20 · 2026-10-23 · Llenar las cifras del correo ya no hace saltar la página';
+const BUILD = 'v21 · 2026-10-29 · Exportar los movimientos a Excel';
 try{ const lb = document.getElementById('logoBuild'); if(lb) lb.textContent = BUILD; }catch(_){}
 console.log('%cRentas build '+BUILD, 'color:#5b8;font-weight:bold');
 
